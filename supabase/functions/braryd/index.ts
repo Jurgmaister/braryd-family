@@ -12,6 +12,7 @@
 //   push-avslutt   – fjerner et push-abonnement.
 //   push-test      – sender et testvarsel til egne enheter.
 //   send-melding   – push-melding til hele familien eller én person {til, tittel, tekst}.
+//   hendelse-tildelt– varsler dem som er lagt til en kalenderaktivitet {id, nye?: [e-post]}.
 //   oppgave-tildelt– varsler dem som har fått en oppgave {id, nye?: [e-post]} (nye = bare de som er lagt til nå).
 //   admin-passord  – admin setter nytt passord for et familiemedlem {email, passord}. Kun admin.
 //   varsle         – automatiske varsler: oppgaver med frist i dag / over fristen, kalenderhendelser
@@ -432,6 +433,10 @@ async function navnPaa(email: string | null) {
 const tildelteFor = (t: any): string[] =>
   (Array.isArray(t.tildelte) && t.tildelte.length ? t.tildelte : t.tildelt ? [t.tildelt] : []).map((e: string) => e.toLowerCase());
 
+// Personene en kalenderaktivitet gjelder (tom liste = hele familien)
+const eiereFor = (h: any): string[] =>
+  (Array.isArray(h.eiere) && h.eiere.length ? h.eiere : h.eier ? [h.eier] : []).map((e: string) => e.toLowerCase());
+
 // ---------- Norsk tid ----------
 const OSLO = "Europe/Oslo";
 function osloDeler(t: number) {
@@ -542,7 +547,8 @@ async function varsle() {
           const kl = h.tid ? ` kl. ${String(h.tid).slice(0, 5)}` : "";
           varsel = { title: h.tittel, body: `${naar[0].toUpperCase()}${naar.slice(1)}${kl}${h.sted ? ` · ${h.sted}` : ""}`, url: "#/", tag: `hendelse-${h.id}-${min}` };
         }
-        await pushTil(h.eier && h.type !== "bursdag" ? [h.eier] : null, varsel);
+        const personer = eiereFor(h);
+        await pushTil(personer.length && h.type !== "bursdag" ? personer : null, varsel);
         sendt.push(`hendelse ${h.tittel} ${dato} (${min})`);
       }
     }
@@ -633,6 +639,20 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.updateUserById(brukerId, { password: passord });
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
+    }
+    if (action === "hendelse-tildelt") {
+      const { data: h } = await admin.from("hendelser").select("*").eq("id", Number(p("id"))).maybeSingle();
+      if (!h) return json({ ok: true, sendt: 0 });
+      const alle = eiereFor(h);
+      const nye = Array.isArray(body.nye) ? body.nye.map((e: string) => String(e).toLowerCase()) : alle;
+      const mottakere = alle.filter((e) => nye.includes(e) && e !== meg);
+      if (!mottakere.length) return json({ ok: true, sendt: 0 });
+      const fra = await navnPaa(meg);
+      const kl = h.tid ? ` kl. ${String(h.tid).slice(0, 5)}` : "";
+      const n = await pushTil(mottakere, {
+        title: `Ny i kalenderen: ${h.tittel}`, body: `${pentDato(h.dato)}${kl}${h.sted ? ` · ${h.sted}` : ""} · lagt inn av ${fra}`, url: "#/",
+      });
+      return json({ ok: true, sendt: n });
     }
     if (action === "oppgave-tildelt") {
       const { data: t } = await admin.from("oppgaver").select("*").eq("id", Number(p("id"))).maybeSingle();

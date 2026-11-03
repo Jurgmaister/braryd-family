@@ -180,3 +180,11 @@ Nye familiemedlemmer legges fortsatt inn i `medlemmer`-tabellen (steg 1). De få
 Kjør `supabase/familie3.sql` i **SQL Editor → New query → Run** (etter `admin.sql`), og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
 
 Under «Hvem» kan du nå velge flere. Alle får varsel når de får oppgaven, og alle får påminnelsene. Når én av dem krysser av, er oppgaven gjort for alle (og faste oppgaver kommer tilbake til de samme personene). Eksisterende oppgaver beholder personen de hadde.
+
+---
+
+## Flere personer på én kalenderaktivitet
+
+Kjør `supabase/familie4.sql` i **SQL Editor → New query → Run** (etter `familie3.sql`), og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
+
+Under «Hvem gjelder det» kan du velge flere personer, eller «Hele familien». De som legges til får push med en gang, og alle får påminnelsene. Aktiviteten vises i kalenderen til hver av dem (filteret øverst), med en fargestrek per person.

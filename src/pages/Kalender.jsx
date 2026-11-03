@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
-import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor, useRett, tildelteFor } from '../data.js';
+import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor, useRett, tildelteFor, eiereFor } from '../data.js';
+import { callFunction } from '../supabase.js';
 import KunInnsyn from '../components/KunInnsyn.jsx';
 import {
   UKEDAGER, MND, isoDato, iDag, fraIso, mandagI, leggTilDager, forekomster, klokke, GJENTAKELSE_HENDELSE,
@@ -55,8 +56,8 @@ export default function Kalender({ email }) {
 
   const filtrert = (rader || []).filter((h) => {
     if (filter === 'alle') return true;
-    if (filter === 'familie') return !h.eier;
-    return (h.eier || '').toLowerCase() === filter || (!h.eier && filter !== 'familie' && h.type === 'bursdag');
+    if (filter === 'familie') return !eiereFor(h).length;
+    return eiereFor(h).includes(filter) || (!eiereFor(h).length && h.type === 'bursdag');
   });
   const iMaaned = useMemo(() => utvid(filtrert, synligeDager[0], synligeDager[synligeDager.length - 1]),
     [filtrert, synligeDager[0], sisteUke]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,7 +119,7 @@ export default function Kalender({ email }) {
                 <span className="kal-prikker">
                   {liste.slice(0, 3).map((h) => (h.type === 'bursdag'
                     ? <span key={`${h.id}${d}`} className="kal-kake">🎂</span>
-                    : <span key={`${h.id}${d}`} className="prikk" style={{ background: fargeFor(medlemmer, h.eier) }} />))}
+                    : <span key={`${h.id}${d}`} className="prikk" style={{ background: fargeFor(medlemmer, eiereFor(h)[0] || null) }} />))}
                   {liste.length > 3 && <span className="kal-pluss">+</span>}
                 </span>
               </button>
@@ -167,11 +168,13 @@ function leggTil(iso, n) { return isoDato(leggTilDager(fraIso(iso), n)); }
 function HendelseRad({ h, medlemmer, visDato, onApne }) {
   const d = fraIso(h.forekomst);
   const alder = h.type === 'bursdag' && h.fodselsar ? d.getFullYear() - h.fodselsar : null;
-  const hvem = h.eier ? navnFor(medlemmer, h.eier) : 'Familie';
+  const personer = eiereFor(h);
+  const hvem = personer.length ? personer.map((e) => navnFor(medlemmer, e)).join(', ') : 'Familie';
+  const farger = personer.length ? personer.map((e) => fargeFor(medlemmer, e)) : [fargeFor(medlemmer, null)];
   return (
     <li>
       <button type="button" className="hendelse" onClick={onApne}>
-        <span className="hendelse-strek" style={{ background: fargeFor(medlemmer, h.eier) }} />
+        <span className="hendelse-strek" style={{ background: farger.length > 1 ? `linear-gradient(${farger.map((c, i) => `${c} ${(i / farger.length) * 100}% ${((i + 1) / farger.length) * 100}%`).join(', ')})` : farger[0] }} />
         <span className="hendelse-tid">
           {visDato && <span className="hendelse-dato">{UKEDAGER[d.getDay()].slice(0, 3)} {d.getDate()}.</span>}
           {h.tid ? klokke(h.tid) : 'Hele dagen'}
@@ -198,11 +201,11 @@ function HendelseSkjema({ hendelse, medlemmer, meg, kan, onClose }) {
     if (hendelse.id) {
       setF({
         ...hendelse, heldag: !hendelse.tid, tid: klokke(hendelse.tid), slutt_tid: klokke(hendelse.slutt_tid),
-        varsler: varslerFor(hendelse).map(String),
+        varsler: varslerFor(hendelse).map(String), eiere: eiereFor(hendelse),
         sluttdato: hendelse.sluttdato || '', gjentar_til: hendelse.gjentar_til || '', fodselsar: hendelse.fodselsar || '',
       });
     } else {
-      setF({ type: 'avtale', eier: null, dato: hendelse.dato || iDag(), heldag: false, tid: '17:00', slutt_tid: '', gjentakelse: 'ingen', varsler: ['60'], sted: '', notat: '', sluttdato: '', gjentar_til: '', fodselsar: '' });
+      setF({ type: 'avtale', eiere: [], dato: hendelse.dato || iDag(), heldag: false, tid: '17:00', slutt_tid: '', gjentakelse: 'ingen', varsler: ['60'], sted: '', notat: '', sluttdato: '', gjentar_til: '', fodselsar: '' });
     }
   }, [hendelse]);
   if (!hendelse) return null;
@@ -210,7 +213,7 @@ function HendelseSkjema({ hendelse, medlemmer, meg, kan, onClose }) {
   const sett = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   function velgType(type) {
-    if (type === 'bursdag') setF({ ...f, type, heldag: true, gjentakelse: 'aarlig', varsler: f.type === 'bursdag' ? f.varsler : ['-480', '360', '9600'], eier: null });
+    if (type === 'bursdag') setF({ ...f, type, heldag: true, gjentakelse: 'aarlig', varsler: f.type === 'bursdag' ? f.varsler : ['-480', '360', '9600'], eiere: [] });
     else if (type === 'trening') setF({ ...f, type, heldag: false, gjentakelse: f.gjentakelse === 'aarlig' || f.gjentakelse === 'ingen' ? 'ukentlig' : f.gjentakelse, varsler: tilpass(f.varsler, false) });
     else setF({ ...f, type, gjentakelse: f.type === 'bursdag' ? 'ingen' : f.gjentakelse });
   }
@@ -232,7 +235,17 @@ function HendelseSkjema({ hendelse, medlemmer, meg, kan, onClose }) {
     if (!f.dato) { toast('Velg dato'); return; }
     if (!f.heldag && !f.tid) { toast('Velg klokkeslett eller hele dagen'); return; }
     setJobber(true);
-    try { await lagreHendelse(f); toast('Lagret'); onClose(); } catch (e) { toast(e.message); } finally { setJobber(false); }
+    try {
+      const lagret = await lagreHendelse(f);
+      // Varsle dem som er lagt til nå (ikke meg selv)
+      const foer = ny ? [] : eiereFor(hendelse);
+      const nye = eiereFor(lagret).filter((e) => !foer.includes(e) && e !== meg);
+      if (nye.length) {
+        const svar = await callFunction('hendelse-tildelt', { id: lagret.id, nye }).catch(() => null);
+        toast(svar?.sendt ? `Lagret – ${nye.map((e) => navnFor(medlemmer, e)).join(' og ')} har fått varsel` : 'Lagret');
+      } else toast('Lagret');
+      onClose();
+    } catch (e) { toast(e.message); } finally { setJobber(false); }
   }
   async function slett() {
     if (!window.confirm(hendelse.gjentakelse !== 'ingen' ? `Slette «${hendelse.tittel}» og alle gjentakelsene?` : `Slette «${hendelse.tittel}»?`)) return;
@@ -258,16 +271,21 @@ function HendelseSkjema({ hendelse, medlemmer, meg, kan, onClose }) {
         </label>
         {!bursdag && (
           <div>
-            <p className="feltnavn">Kalender</p>
+            <p className="feltnavn">Hvem gjelder det</p>
             <div className="chips">
-              <button type="button" className={!f.eier ? 'chip chip-on' : 'chip'} onClick={() => setF({ ...f, eier: null })}>
-                <span className="prikk" style={{ background: fargeFor(medlemmer, null) }} /> Familie
+              <button type="button" className={!(f.eiere || []).length ? 'chip chip-on' : 'chip'} onClick={() => setF({ ...f, eiere: [] })}>
+                <span className="prikk" style={{ background: fargeFor(medlemmer, null) }} /> Hele familien
               </button>
-              {medlemmer.map((m) => (
-                <button key={m.email} type="button" className={(f.eier || '').toLowerCase() === m.email.toLowerCase() ? 'chip chip-on' : 'chip'} onClick={() => setF({ ...f, eier: m.email })}>
-                  <span className="prikk" style={{ background: fargeFor(medlemmer, m.email) }} /> {m.email.toLowerCase() === meg ? `${m.navn} (meg)` : m.navn}
-                </button>
-              ))}
+              {medlemmer.map((m) => {
+                const e = m.email.toLowerCase();
+                const valgt = (f.eiere || []).includes(e);
+                return (
+                  <button key={m.email} type="button" className={valgt ? 'chip chip-on' : 'chip'} aria-pressed={valgt}
+                    onClick={() => setF({ ...f, eiere: valgt ? f.eiere.filter((x) => x !== e) : [...(f.eiere || []), e] })}>
+                    <span className="prikk" style={{ background: fargeFor(medlemmer, m.email) }} /> {e === meg ? `${m.navn} (meg)` : m.navn}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -315,7 +333,7 @@ function HendelseSkjema({ hendelse, medlemmer, meg, kan, onClose }) {
           </div>
         </div>
         <p className="muted liten">
-          {bursdag ? 'Bursdager varsles til hele familien.' : f.eier ? `Varselet går til ${navnFor(medlemmer, f.eier)}.` : 'Varselet går til hele familien.'}
+          {bursdag ? 'Bursdager varsles til hele familien.' : (f.eiere || []).length ? `Varslene går til ${f.eiere.map((e) => (e === meg ? 'deg' : navnFor(medlemmer, e))).join(', ').replace(/, ([^,]*)$/, ' og $1')}. De som legges til får også beskjed med en gang.` : 'Varslene går til hele familien.'}
           {!bursdag && f.gjentakelse !== 'ingen' ? ' Endringer gjelder alle gjentakelsene.' : ''}
         </p>
         <label className="field">Notat<textarea rows={2} value={f.notat || ''} onChange={sett('notat')} placeholder="Valgfritt" /></label>

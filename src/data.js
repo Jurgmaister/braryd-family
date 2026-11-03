@@ -369,10 +369,14 @@ export async function lagreOppgave(o) {
   });
 }
 
+// Personene en kalenderaktivitet gjelder (tom = felles familie)
+export const eiereFor = (h) => ((h?.eiere?.length ? h.eiere : h?.eier ? [h.eier] : []).map((e) => e.toLowerCase()));
+
 export async function lagreHendelse(h) {
+  const personer = h.type === 'bursdag' ? [] : [...new Set((h.eiere || []).map((e) => e.toLowerCase()))];
   const varsler = [...new Set((h.varsler || []).filter((v) => v !== '' && v != null).map(Number))].slice(0, 3);
   return lagreRad('hendelser', h.id, {
-    tittel: h.tittel.trim(), type: h.type || 'avtale', eier: h.eier || null, dato: h.dato,
+    tittel: h.tittel.trim(), type: h.type || 'avtale', eiere: personer.length ? personer : null, eier: personer[0] || null, dato: h.dato,
     tid: h.heldag ? null : (h.tid || null), slutt_tid: h.heldag ? null : (h.slutt_tid || null),
     sluttdato: h.sluttdato && h.sluttdato > h.dato ? h.sluttdato : null,
     sted: h.sted || '', notat: h.notat || '', gjentakelse: h.gjentakelse || 'ingen',
