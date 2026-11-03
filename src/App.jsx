@@ -5,7 +5,7 @@ import { useSession, useHandleliste } from './data.js';
 import Login from './pages/Login.jsx';
 import Uke from './pages/Uke.jsx';
 import Handleliste from './pages/Handleliste.jsx';
-import Tilbud from './pages/Tilbud.jsx';
+import Priser from './pages/Priser.jsx';
 import Middager from './pages/Middager.jsx';
 import Innstillinger from './pages/Innstillinger.jsx';
 import TabBar from './components/TabBar.jsx';
@@ -67,7 +67,7 @@ function Skall({ route, email }) {
   let side;
   let aktiv = seksjon || 'uke';
   if (seksjon === 'handle') side = <Handleliste liste={liste} />;
-  else if (seksjon === 'tilbud') side = <Tilbud liste={liste} />;
+  else if (seksjon === 'tilbud') side = <Priser liste={liste} />;
   else if (seksjon === 'middager') side = <Middager />;
   else if (seksjon === 'innstillinger') side = <Innstillinger email={email} />;
   else { side = <Uke />; aktiv = 'uke'; }

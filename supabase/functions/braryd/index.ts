@@ -5,9 +5,11 @@
 //                    POST {"action":"siri-legg-til","nokkel":"…","tekst":"melk, egg og brød"}
 //                    (eller GET ?action=siri-legg-til&nokkel=…&tekst=…)
 //   siri-les       – leser opp det som står igjen på handlelisten. Krever Siri-nøkkel.
-//   tilbud-sync    – henter ukens tilbud fra matkjedene (via Tjek/eTilbudsavis) og lagrer dem.
-//                    Åpen, men hoppes over hvis det ble hentet for under 2 timer siden.
-//                    Et innlogget familiemedlem kan tvinge ny henting (maks hvert 10. minutt).
+//   priser         – dagens priser per kjede for en liste varenavn (fra Kassalapp), med 12 timers mellomlager.
+//                    POST {"action":"priser","navn":["Melk","Kjøttdeig"],"force":false}. Kun familiemedlemmer.
+//   sok            – søk etter en vare på tvers av kjedene (fra Kassalapp). Kun familiemedlemmer.
+//
+// Hemmelighet (Edge Functions → Secrets): KASSALAPP_API_KEY (fra kassal.app/api).
 //
 // Siri-handlingene svarer med vanlig tekst, slik at snarveien kan lese svaret høyt.
 // SUPABASE_URL og SUPABASE_SERVICE_ROLE_KEY settes automatisk av Supabase.
@@ -19,7 +21,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-const TJEK_BASES = ["https://api.etilbudsavis.dk/v2", "https://squid-api.tjek.com/v2"];
+const KASSAL = "https://kassal.app/api/v1";
+const MAKS_ALDER = 12 * 3600_000; // priser i mellomlageret regnes som ferske i 12 timer
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -103,136 +106,151 @@ async function siriLes(nokkel: string | null) {
   return text(`${varer.length === 1 ? "Det står én ting" : `Det står ${varer.length} ting`} på handlelisten: ${liste(navn)}.`);
 }
 
-// ---------- Tilbud ----------
-// «Coop Extra» og «Extra», «Coop Mega» og «Mega» regnes som samme kjede
-const norm = (s: string) => {
-  const n = s.toLowerCase().replace(/[^a-z0-9æøå]/g, "");
-  return n.replace(/^coop/, "") || n;
-};
-const isoTid = (s?: string) => (s ? s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2") : null);
+// ---------- Tilgang ----------
+async function erMedlem(req: Request) {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token || token.split(".").length !== 3) return false; // publiserbar nøkkel ≠ innlogget bruker
+  const { data, error } = await admin.auth.getUser(token);
+  const email = data?.user?.email?.toLowerCase();
+  if (error || !email) return false;
+  const { data: m } = await admin.from("medlemmer").select("email").ilike("email", email).maybeSingle();
+  return Boolean(m);
+}
 
-async function tjek(path: string, params: Record<string, string | number>) {
+// ---------- Treff mellom varenavn og produktnavn ----------
+const BOKSTAV = "a-z0-9æøåéèäöü";
+const FYLLORD = new Set(["og", "med", "i", "til", "av", "en", "ett", "ei", "for", "uten", "fersk", "ferske", "stor", "liten", "små"]);
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const normaliser = (s: string) => (s || "").toLowerCase().normalize("NFC").replace(/\s+/g, " ").trim();
+
+function varianter(o: string) {
+  const v = new Set([o]);
+  if (o.length > 4 && o.endsWith("ene")) { v.add(o.slice(0, -3)); v.add(o.slice(0, -2)); }
+  if (o.length > 4 && o.endsWith("er")) { v.add(o.slice(0, -2)); v.add(o.slice(0, -1)); }
+  if (o.length > 4 && o.endsWith("en")) v.add(o.slice(0, -2));
+  return [...v].filter((x) => x.length >= 2).map(escape).join("|");
+}
+
+// Gir poeng for hvor godt et produktnavn passer et varenavn (0 = ikke treff).
+// Norske sammensatte ord har hovedordet sist: «melk» treffer «Lettmelk», ikke «Melkesjokolade».
+export function lagTreffer(varenavn: string) {
+  const ord = normaliser(varenavn).split(/[^a-z0-9æøåéèäöü]+/).filter((o) => o.length >= 2 && !FYLLORD.has(o));
+  if (!ord.length) return () => 0;
+  const reg = ord.map((o) => (o.length >= 5
+    ? new RegExp(`(${varianter(o)})`)
+    : new RegExp(`(${varianter(o)})(?:er|r|ene|ne|en|e)?(?![${BOKSTAV}])`)));
+  const hode = reg[reg.length - 1];
+  const start = new RegExp(`^(${varianter(ord[ord.length - 1])})`);
+  return (produktnavn: string) => {
+    const t = normaliser(produktnavn);
+    const treff = reg.filter((r) => r.test(t)).length;
+    const hodeTreff = hode.test(t);
+    // Godta når hovedordet treffer, eller når alle de andre ordene treffer («Norvegia ost» → «Norvegia 26 % 1 kg»)
+    if (!hodeTreff && !(reg.length > 1 && treff === reg.length - 1)) return 0;
+    return treff + (start.test(t) ? 0.5 : 0);
+  };
+}
+
+// ---------- Kassalapp ----------
+async function kassal(path: string, params: Record<string, string | number | boolean>) {
+  const key = Deno.env.get("KASSALAPP_API_KEY");
+  if (!key) throw new Error("KASSALAPP_API_KEY mangler i Supabase (Edge Functions → Secrets)");
   const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
-  let siste: unknown = null;
-  for (const base of TJEK_BASES) {
-    try {
-      const res = await fetch(`${base}${path}?${qs}`, { headers: { Accept: "application/json" } });
-      if (res.ok) return await res.json();
-      siste = `${res.status}`;
-    } catch (e) {
-      siste = e;
+  for (let forsok = 0; forsok < 3; forsok++) {
+    const res = await fetch(`${KASSAL}${path}?${qs}`, { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } });
+    if (res.status === 429) {
+      const vent = Math.min(Number(res.headers.get("retry-after")) || 5, 20);
+      await new Promise((r) => setTimeout(r, vent * 1000));
+      continue;
     }
+    if (res.status === 401) throw new Error("Kassalapp godtok ikke API-nøkkelen (401)");
+    if (!res.ok) throw new Error(`Kassalapp svarte ${res.status}`);
+    return await res.json();
   }
-  throw new Error(`Tilbudskilden svarte ikke (${siste})`);
+  throw new Error("Kassalapp: for mange forespørsler, prøv igjen om litt");
 }
 
-function enhetspris(o: any): string {
-  const p = o.pricing?.price;
-  const q = o.quantity;
-  const si = q?.unit?.si;
-  const size = q?.size?.from;
-  const pieces = q?.pieces?.from || 1;
-  if (p && si?.factor && size && ["kg", "l"].includes(si.symbol)) {
-    const mengde = size * pieces * si.factor;
-    if (mengde > 0) return `${(p / mengde).toFixed(2).replace(".", ",")} kr/${si.symbol}`;
-  }
-  const m = (o.description || "").match(/(\d+[.,]\d+)\s*(?:kr\.?\s*)?pr\.?\s*(kg|l|liter|stk)/i);
-  return m ? `${m[1]} kr/${m[2].toLowerCase()}` : "";
+const ENHET: Record<string, string> = { g: "kg", kg: "kg", hg: "kg", ml: "l", cl: "l", dl: "l", l: "l", stk: "stk" };
+
+function tilTreff(p: any, poeng: number) {
+  const pris = Number(p.current_price);
+  const historikk = (p.price_history || [])
+    .filter((h: any) => h?.price && h?.date && Date.now() - Date.parse(h.date) < 35 * 86400_000)
+    .map((h: any) => Number(h.price));
+  const hoyest = historikk.length ? Math.max(...historikk) : null;
+  return {
+    kode: p.store?.code || "",
+    kjede: p.store?.name || "",
+    logo: p.store?.logo || "",
+    navn: p.name || "",
+    merke: p.brand || "",
+    pris,
+    enhetspris: p.current_unit_price != null ? Number(p.current_unit_price) : null,
+    enhet: ENHET[(p.weight_unit || "").toLowerCase()] || "",
+    forpris: hoyest && hoyest > pris * 1.05 ? hoyest : null, // prisfall siste 5 uker
+    bilde: p.image || "",
+    url: p.url || "",
+    oppdatert: p.updated_at || null,
+    poeng,
+  };
 }
 
-async function tilbudSync(req: Request, force: boolean) {
-  const { data: inn } = await admin.from("innstillinger").select("*").eq("id", 1).single();
-  if (!inn) return json({ error: "Innstillinger mangler. Kjør schema.sql." }, 500);
+// Sammenlign på pris per kg/l når begge har det, ellers på pris.
+function billigere(a: any, b: any) {
+  if (a.enhetspris && b.enhetspris && a.enhet && a.enhet === b.enhet) return a.enhetspris - b.enhetspris;
+  return a.pris - b.pris;
+}
 
-  const sist = inn.tilbud_hentet ? Date.parse(inn.tilbud_hentet) : 0;
-  let erMedlem = false;
-  if (force) {
-    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-    if (token) {
-      const brukerKlient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-        global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false },
-      });
-      const { data } = await brukerKlient.rpc("er_medlem");
-      erMedlem = data === true;
-    }
+async function hentPris(sok: string) {
+  const svar = await kassal("/products", { search: sok, size: 100 });
+  const poeng = lagTreffer(sok);
+  const relevante = (svar.data || [])
+    .filter((p: any) => p.current_price != null && p.store?.code)
+    .map((p: any) => tilTreff(p, poeng(`${p.name} ${p.brand || ""}`)))
+    .filter((t: any) => t.poeng > 0);
+  // Beste treff per kjede: høyest poeng, deretter billigst
+  const perKjede = new Map<string, any>();
+  for (const t of relevante) {
+    const f = perKjede.get(t.kode);
+    if (!f || t.poeng > f.poeng || (t.poeng === f.poeng && billigere(t, f) < 0)) perKjede.set(t.kode, t);
   }
-  const minAlder = erMedlem ? 10 * 60_000 : 2 * 3600_000;
-  if (Date.now() - sist < minAlder) {
-    return json({ ok: true, hoppet_over: true, hentet: inn.tilbud_hentet });
-  }
+  const treff = [...perKjede.values()].sort(billigere);
+  const alle = relevante.sort((a: any, b: any) => (b.poeng - a.poeng) || billigere(a, b)).slice(0, 60);
+  return { sok, treff, alle, hentet: new Date().toISOString() };
+}
 
-  const start = new Date().toISOString();
-  const onsket = new Set((inn.kjeder as string[]).map(norm));
-  const felles = { r_lat: inn.lat, r_lng: inn.lng, r_radius: Math.round(inn.radius_km * 1000), r_locale: "nb_NO" };
+async function priser(navnListe: string[], force: boolean) {
+  const sokeord = [...new Set((navnListe || []).map(normaliser).filter((n) => n.length >= 3))].slice(0, 40);
+  if (!sokeord.length) return json({ resultater: {} });
+  const { data: lagret } = await admin.from("pris_cache").select("sok, data, hentet").in("sok", sokeord);
+  const resultater: Record<string, any> = {};
+  for (const r of lagret ?? []) resultater[r.sok] = r.data;
+  const gamle = sokeord.filter((s) => force || !resultater[s] || Date.now() - Date.parse(resultater[s].hentet) > MAKS_ALDER);
 
-  try {
-    // 1) Kundeaviser i nærheten fra kjedene vi følger
-    const kataloger: any[] = [];
-    for (const type of ["paged", "incito"]) {
+  const feil: string[] = [];
+  let i = 0;
+  const arbeider = async () => {
+    while (i < gamle.length) {
+      const s = gamle[i++];
       try {
-        for (let side = 0; side < 5; side++) {
-          const batch = await tjek("/catalogs", { ...felles, types: type, limit: 100, offset: side * 100 });
-          if (!Array.isArray(batch)) break;
-          kataloger.push(...batch);
-          if (batch.length < 100) break;
-        }
+        const data = await hentPris(s);
+        resultater[s] = data;
+        await admin.from("pris_cache").upsert({ sok: s, data, hentet: data.hentet });
       } catch (e) {
-        if (type === "paged") throw e; // digitale kundeaviser er en bonus; papirutgavene må virke
+        feil.push(`${s}: ${e instanceof Error ? e.message : e}`);
       }
     }
-    const naa = Date.now();
-    const valgte = kataloger.filter((c) =>
-      onsket.has(norm(c.branding?.name || "")) && (!c.run_till || Date.parse(isoTid(c.run_till)!) > naa)
-    );
-    const unike = [...new Map(valgte.map((c) => [c.id, c])).values()];
+  };
+  await Promise.all([arbeider(), arbeider(), arbeider()]);
+  return json({ resultater, feil });
+}
 
-    // 2) Tilbudene i hver kundeavis
-    const rader: any[] = [];
-    for (const k of unike) {
-      for (let offset = 0; offset < 1500; offset += 100) {
-        const batch = await tjek("/offers", { catalog_id: k.id, r_locale: "nb_NO", limit: 100, offset });
-        if (!Array.isArray(batch) || !batch.length) break;
-        for (const o of batch) {
-          if (!o?.id || !o.heading) continue;
-          rader.push({
-            id: o.id,
-            kjede: o.branding?.name || k.branding?.name || "",
-            tittel: String(o.heading).trim(),
-            beskrivelse: String(o.description || "").trim(),
-            pris: o.pricing?.price ?? null,
-            forpris: o.pricing?.pre_price ?? null,
-            enhetspris: enhetspris(o),
-            bilde: o.images?.thumb || "",
-            bilde_stor: o.images?.zoom || o.images?.view || "",
-            gyldig_fra: isoTid(o.run_from),
-            gyldig_til: isoTid(o.run_till),
-            katalog_id: k.id,
-            katalog_side: o.catalog_page ?? null,
-            hentet: start,
-          });
-        }
-        if (batch.length < 100) break;
-      }
-    }
-
-    const unikeRader = [...new Map(rader.map((r) => [r.id, r])).values()];
-    for (let i = 0; i < unikeRader.length; i += 500) {
-      const { error } = await admin.from("tilbud").upsert(unikeRader.slice(i, i + 500), { onConflict: "id" });
-      if (error) throw new Error(error.message);
-    }
-    // Fjern utgåtte og de som ikke lenger finnes
-    if (unikeRader.length) await admin.from("tilbud").delete().lt("hentet", start);
-    await admin.from("tilbud").delete().lt("gyldig_til", new Date().toISOString());
-
-    const kjeder = [...new Set(unikeRader.map((r) => r.kjede))].sort();
-    const status = `${unikeRader.length} tilbud fra ${kjeder.length} kjeder`;
-    await admin.from("innstillinger").update({ tilbud_hentet: start, tilbud_status: status }).eq("id", 1);
-    return json({ ok: true, antall: unikeRader.length, kjeder, hentet: start });
-  } catch (e) {
-    const melding = e instanceof Error ? e.message : String(e);
-    await admin.from("innstillinger").update({ tilbud_status: `Feil: ${melding}` }).eq("id", 1);
-    return json({ error: melding }, 502);
-  }
+async function sok(q: string) {
+  const s = normaliser(q || "");
+  if (s.length < 3) return json({ error: "Skriv minst tre bokstaver" }, 400);
+  const data = await hentPris(s);
+  await admin.from("pris_cache").upsert({ sok: s, data, hentet: data.hentet });
+  return json(data);
 }
 
 // ---------- Ruting ----------
@@ -250,7 +268,11 @@ Deno.serve(async (req) => {
   try {
     if (action === "siri-legg-til") return await siriLeggTil(p("nokkel"), p("tekst") || "");
     if (action === "siri-les") return await siriLes(p("nokkel"));
-    if (action === "tilbud-sync") return await tilbudSync(req, Boolean(p("force")));
+    if (action === "priser" || action === "sok") {
+      if (!(await erMedlem(req))) return json({ error: "Logg inn på nytt" }, 401);
+      if (action === "priser") return await priser(Array.isArray(body.navn) ? body.navn : [], Boolean(body.force));
+      return await sok(p("q"));
+    }
     return json({ error: "Ukjent handling" }, 400);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);

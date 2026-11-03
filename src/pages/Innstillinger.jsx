@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase, callFunction } from '../supabase.js';
-import { FUNCTION_URL, ALLE_KJEDER } from '../config.js';
+import { supabase } from '../supabase.js';
+import { FUNCTION_URL, BUTIKKER } from '../config.js';
 import { useMedlemmer, lastMedlemmerPaaNytt, useInnstillinger, lastInnstillingerPaaNytt } from '../data.js';
 import Topbar from '../components/Topbar.jsx';
 import Icon from '../components/Icon.jsx';
@@ -106,57 +106,29 @@ function Siri() {
 
 function TilbudInnstillinger() {
   const inn = useInnstillinger();
-  const [f, setF] = useState(null);
-  const [henter, setHenter] = useState(false);
-  useEffect(() => { if (inn) setF({ lat: inn.lat, lng: inn.lng, radius_km: inn.radius_km, kjeder: inn.kjeder }); }, [inn]);
-  if (!f) return null;
+  const [valgt, setValgt] = useState(null);
+  useEffect(() => { if (inn) setValgt(inn.butikker || []); }, [inn]);
+  if (!valgt) return null;
 
-  function posisjon() {
-    if (!navigator.geolocation) { toast('Telefonen deler ikke posisjon'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (p) => { setF({ ...f, lat: Number(p.coords.latitude.toFixed(4)), lng: Number(p.coords.longitude.toFixed(4)) }); toast('Posisjon hentet – trykk Lagre'); },
-      () => toast('Fikk ikke tilgang til posisjonen'),
-      { enableHighAccuracy: false, timeout: 10000 },
-    );
-  }
-
-  const veksle = (k) => setF({ ...f, kjeder: f.kjeder.includes(k) ? f.kjeder.filter((x) => x !== k) : [...f.kjeder, k] });
+  const veksle = (k) => setValgt(valgt.includes(k) ? valgt.filter((x) => x !== k) : [...valgt, k]);
 
   async function lagre() {
-    setHenter(true);
-    const { error } = await supabase.from('innstillinger').update({ lat: f.lat, lng: f.lng, radius_km: f.radius_km, kjeder: f.kjeder }).eq('id', 1);
-    if (error) { toast(error.message); setHenter(false); return; }
-    try {
-      const svar = await callFunction('tilbud-sync', { force: true });
-      toast(svar.hoppet_over ? 'Lagret. Tilbudene hentes snart på nytt.' : `Lagret – hentet ${svar.antall} tilbud`);
-    } catch (e) { toast(`Lagret, men henting feilet: ${e.message}`); }
+    const { error } = await supabase.from('innstillinger').update({ butikker: valgt }).eq('id', 1);
+    if (error) { toast(error.message); return; }
     await lastInnstillingerPaaNytt();
-    setHenter(false);
+    toast('Lagret');
   }
 
   return (
     <section className="card stack">
-      <h2 className="h2"><Icon name="tag" size={20} /> Tilbud</h2>
-      <p className="muted">Tilbudene hentes fra kundeavisene til butikkene i nærheten av dette punktet.</p>
-      <div className="inputrad">
-        <span className="vokse muted liten"><Icon name="pin" size={14} /> {f.lat.toFixed(3)}, {f.lng.toFixed(3)}</span>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={posisjon}>Bruk min posisjon</button>
+      <h2 className="h2"><Icon name="tag" size={20} /> Priser</h2>
+      <p className="muted">Prisene kommer fra Kassalapp, som henter dagens priser fra nettbutikkene til kjedene. Velg hvilke kjeder dere handler i.</p>
+      <div className="chips">
+        {BUTIKKER.map((b) => (
+          <button key={b.kode} type="button" className={valgt.includes(b.kode) ? 'chip chip-on' : 'chip'} onClick={() => veksle(b.kode)}>{b.navn}</button>
+        ))}
       </div>
-      <label className="field">Avstand
-        <select value={f.radius_km} onChange={(e) => setF({ ...f, radius_km: Number(e.target.value) })}>
-          {[5, 10, 15, 25, 40, 60].map((r) => <option key={r} value={r}>{r} km</option>)}
-        </select>
-      </label>
-      <div>
-        <p className="feltnavn">Kjeder</p>
-        <div className="chips">
-          {ALLE_KJEDER.map((k) => (
-            <button key={k} type="button" className={f.kjeder.includes(k) ? 'chip chip-on' : 'chip'} onClick={() => veksle(k)}>{k}</button>
-          ))}
-        </div>
-      </div>
-      <button type="button" className="btn btn-primary" onClick={lagre} disabled={henter}>{henter ? 'Henter tilbud …' : 'Lagre og hent tilbud'}</button>
-      {inn?.tilbud_status && <p className="muted liten">Siste henting: {inn.tilbud_status}</p>}
+      <button type="button" className="btn btn-primary" onClick={lagre}>Lagre kjeder</button>
     </section>
   );
 }

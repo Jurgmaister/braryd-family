@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
-import { useKategorier, useMedlemmer, navnFor, useTilbud, leggTilVarer } from '../data.js';
-import { tolkVarer, normaliser, tilbudFor, kr, initialer, gyldigTekst } from '../util.js';
+import { useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer } from '../data.js';
+import { butikk } from '../config.js';
+import { tolkVarer, normaliser, kr, initialer } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
 import Sheet from '../components/Sheet.jsx';
 import Icon from '../components/Icon.jsx';
@@ -11,7 +12,6 @@ export default function Handleliste({ liste }) {
   const { varer, setVarer, feil } = liste;
   const kategorier = useKategorier();
   const medlemmer = useMedlemmer();
-  const { tilbud } = useTilbud();
   const [tekst, setTekst] = useState('');
   const [redigerer, setRedigerer] = useState(null);
   const [visKurv, setVisKurv] = useState(false);
@@ -34,12 +34,9 @@ export default function Handleliste({ liste }) {
       .sort((a, b) => a.rekkefolge - b.rekkefolge);
   }, [aktive, kategorier]);
 
-  const tilbudPerVare = useMemo(() => {
-    const m = new Map();
-    if (!tilbud.length) return m;
-    for (const v of aktive) m.set(v.id, tilbudFor(v.navn, tilbud));
-    return m;
-  }, [aktive, tilbud]);
+  const { pris } = usePriser(aktive.map((v) => v.navn));
+  const butikker = useInnstillinger()?.butikker;
+  const prisFor = (v) => treffI(pris(v.navn), butikker);
 
   async function leggTil(e) {
     e.preventDefault();
@@ -96,7 +93,7 @@ export default function Handleliste({ liste }) {
           <h2 className="gruppe-tittel"><span aria-hidden="true">{g.emoji}</span> {g.navn}</h2>
           <ul className="card varer">
             {g.liste.map((v) => (
-              <VareRad key={v.id} v={v} tilbud={tilbudPerVare.get(v.id) || []} medlemmer={medlemmer}
+              <VareRad key={v.id} v={v} tilbud={prisFor(v)} medlemmer={medlemmer}
                 onVeksle={() => veksle(v)} onApne={() => setRedigerer(v)} />
             ))}
           </ul>
@@ -120,7 +117,7 @@ export default function Handleliste({ liste }) {
         </section>
       )}
 
-      <VareSkjema vare={redigerer} kategorier={kategorier} tilbud={redigerer ? tilbudFor(redigerer.navn, tilbud) : []}
+      <VareSkjema vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []}
         onClose={() => setRedigerer(null)} setVarer={setVarer} medlemmer={medlemmer} />
       <LagreListe open={lagreApen} onClose={() => setLagreApen(false)} varer={aktive} />
       <LagredeLister open={listerApen} onClose={() => setListerApen(false)} aktive={aktive} setVarer={setVarer} />
@@ -139,8 +136,8 @@ function VareRad({ v, tilbud, medlemmer, onVeksle, onApne }) {
       <button type="button" className="vare-tekst" onClick={onApne}>
         <span className="vare-navn">{v.antall && <span className="vare-antall">{v.antall}</span>}{v.navn}</span>
         {billigst && !v.kjopt && (
-          <span className="tilbudmerke">
-            <Icon name="tag" size={12} /> {kr(billigst.pris)} hos {billigst.kjede}{tilbud.length > 1 ? ` · ${tilbud.length} tilbud` : ''}
+          <span className={billigst.forpris ? 'tilbudmerke' : 'tilbudmerke tilbudmerke-rolig'}>
+            <Icon name="tag" size={12} /> {billigst.forpris ? 'Prisfall: ' : 'Billigst: '}{kr(billigst.pris)} hos {butikk(billigst.kode, billigst.kjede).navn}
           </span>
         )}
       </button>
@@ -204,14 +201,14 @@ function VareSkjema({ vare, kategorier, tilbud, onClose, setVarer, medlemmer }) 
         </div>
         {tilbud.length > 0 && (
           <div>
-            <p className="feltnavn">Tilbud nå</p>
+            <p className="feltnavn">Pris i dag</p>
             <ul className="minitilbud">
               {tilbud.slice(0, 8).map((t) => (
-                <li key={t.id}>
+                <li key={t.kode}>
                   {t.bilde && <img src={t.bilde} alt="" loading="lazy" />}
                   <span className="vokse">
-                    <span className="minitilbud-tittel">{t.tittel}</span>
-                    <span className="muted liten">{t.kjede} · {gyldigTekst(t.gyldig_fra, t.gyldig_til)}</span>
+                    <span className="minitilbud-tittel">{t.navn}</span>
+                    <span className="muted liten">{butikk(t.kode, t.kjede).navn}{t.forpris ? ` · prisfall, var ${kr(t.forpris)}` : ''}</span>
                   </span>
                   <span className="pris">{kr(t.pris)}</span>
                 </li>

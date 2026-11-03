@@ -4,16 +4,23 @@ export const isConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 // Navnet (slug) på serverfunksjonen i Supabase. Standard er «braryd».
 export const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/${import.meta.env.VITE_FUNCTION_NAME || 'braryd'}`;
 
-// Kjeder som kan velges for tilbud (navn slik de står i kundeavisene)
-export const ALLE_KJEDER = [
-  'REMA 1000', 'KIWI', 'MENY', 'Extra', 'Coop Prix', 'Coop Mega', 'Obs', 'Coop Marked', 'Coop',
-  'SPAR', 'Eurospar', 'Joker', 'Bunnpris', 'Nærbutikken', 'Matkroken', 'Europris', 'Gigaboks',
+// Kjedene i Kassalapp (kode → navn og farge)
+export const BUTIKKER = [
+  { kode: 'KIWI', navn: 'KIWI', farge: '#2E7D32' },
+  { kode: 'REMA_1000', navn: 'REMA 1000', farge: '#1F3A8A' },
+  { kode: 'MENY_NO', navn: 'MENY', farge: '#C62828' },
+  { kode: 'SPAR_NO', navn: 'SPAR', farge: '#B71C1C' },
+  { kode: 'JOKER_NO', navn: 'Joker', farge: '#E08E00' },
+  { kode: 'COOP_EXTRA', navn: 'Extra', farge: '#D84315' },
+  { kode: 'COOP_MEGA', navn: 'Coop Mega', farge: '#1B5E20' },
+  { kode: 'COOP_PRIX', navn: 'Coop Prix', farge: '#C99700' },
+  { kode: 'COOP_OBS', navn: 'Obs', farge: '#0D47A1' },
+  { kode: 'COOP_MARKED', navn: 'Coop Marked', farge: '#00796B' },
+  { kode: 'COOP_NO', navn: 'Coop', farge: '#00695C' },
+  { kode: 'BUNNPRIS', navn: 'Bunnpris', farge: '#6A1B9A' },
+  { kode: 'NAERBUTIKKEN', navn: 'Nærbutikken', farge: '#4E342E' },
+  { kode: 'MATKROKEN', navn: 'Matkroken', farge: '#8E1B1B' },
+  { kode: 'ODA_NO', navn: 'Oda', farge: '#37474F' },
+  { kode: 'EUROPRIS_NO', navn: 'Europris', farge: '#283593' },
 ];
-
-// Farger på kjedemerkene i tilbudslisten
-export const KJEDE_FARGE = {
-  'REMA 1000': '#1F3A8A', KIWI: '#2E7D32', MENY: '#C62828', Extra: '#D84315', 'Coop Prix': '#E0A100',
-  'Coop Mega': '#1B5E20', Obs: '#0D47A1', 'Coop Marked': '#00796B', Coop: '#00695C', SPAR: '#C62828',
-  Eurospar: '#AD1457', Joker: '#F57F17', Bunnpris: '#6A1B9A', Nærbutikken: '#4E342E', Matkroken: '#B71C1C',
-  Europris: '#283593', Gigaboks: '#37474F',
-};
+export const butikk = (kode, reserve = '') => BUTIKKER.find((b) => b.kode === kode) || { kode, navn: reserve || kode, farge: '#6A716B' };

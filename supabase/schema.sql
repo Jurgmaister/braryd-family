@@ -295,37 +295,20 @@ as
   left join public.middagsplan p on p.middag_id = m.id
   group by m.id;
 
--- ---------- Tilbud (fylles av funksjonen «braryd») ----------
-create table if not exists public.tilbud (
-  id text primary key,
-  kjede text not null,
-  tittel text not null,
-  beskrivelse text not null default '',
-  pris numeric,
-  forpris numeric,
-  enhetspris text not null default '',
-  bilde text not null default '',
-  bilde_stor text not null default '',
-  gyldig_fra timestamptz,
-  gyldig_til timestamptz,
-  katalog_id text,
-  katalog_side int,
+-- ---------- Priser (fylles av funksjonen «braryd» fra Kassalapp) ----------
+create table if not exists public.pris_cache (
+  sok text primary key,
+  data jsonb not null,
   hentet timestamptz not null default now()
 );
-create index if not exists tilbud_kjede_idx on public.tilbud (kjede);
 
 -- ---------- Innstillinger ----------
 create table if not exists public.innstillinger (
   id int primary key default 1 check (id = 1),
-  lat double precision not null default 60.3913,     -- Bergen sentrum; endres i appen
-  lng double precision not null default 5.3221,
-  radius_km int not null default 15,
-  kjeder text[] not null default array[
-    'REMA 1000','KIWI','MENY','Extra','Coop Prix','Coop Mega','Obs','Coop Marked',
-    'SPAR','Eurospar','Joker','Bunnpris','Nærbutikken','Matkroken','Coop'
-  ],
-  tilbud_hentet timestamptz,
-  tilbud_status text not null default ''
+  butikker text[] not null default array[
+    'KIWI','REMA_1000','MENY_NO','SPAR_NO','JOKER_NO','COOP_EXTRA','COOP_MEGA','COOP_PRIX','COOP_OBS',
+    'COOP_MARKED','BUNNPRIS','NAERBUTIKKEN','ODA_NO'
+  ]
 );
 insert into public.innstillinger (id) values (1) on conflict do nothing;
 
@@ -339,18 +322,18 @@ alter table public.handleliste enable row level security;
 alter table public.lagrede_lister enable row level security;
 alter table public.middager enable row level security;
 alter table public.middagsplan enable row level security;
-alter table public.tilbud enable row level security;
+alter table public.pris_cache enable row level security;
 alter table public.innstillinger enable row level security;
 
 do $$
 declare t text;
 begin
   -- Lesing for alle medlemmer
-  foreach t in array array['medlemmer','kategorier','kategori_ord','kategori_minne','handleliste','lagrede_lister','middager','middagsplan','tilbud','innstillinger'] loop
+  foreach t in array array['medlemmer','kategorier','kategori_ord','kategori_minne','handleliste','lagrede_lister','middager','middagsplan','pris_cache','innstillinger'] loop
     execute format('drop policy if exists "medlem leser" on public.%I', t);
     execute format('create policy "medlem leser" on public.%I for select to authenticated using (public.er_medlem())', t);
   end loop;
-  -- Skriving for alle medlemmer (tilbud skrives bare av funksjonen)
+  -- Skriving for alle medlemmer (priser skrives bare av funksjonen)
   foreach t in array array['kategori_minne','handleliste','lagrede_lister','middager','middagsplan','kategorier'] loop
     execute format('drop policy if exists "medlem skriver" on public.%I', t);
     execute format('create policy "medlem skriver" on public.%I for all to authenticated using (public.er_medlem()) with check (public.er_medlem())', t);

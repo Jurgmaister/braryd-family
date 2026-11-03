@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase, callFunction } from './supabase.js';
 
 // ---------- Innlogging ----------
@@ -102,21 +102,7 @@ export async function leggTilVarer(varer, kilde = 'app') {
   return data;
 }
 
-// ---------- Tilbud ----------
-const tilbudStore = lagStore(async () => {
-  const naa = new Date().toISOString();
-  const alle = [];
-  for (let fra = 0; ; fra += 1000) {
-    const { data, error } = await supabase.from('tilbud').select('*')
-      .or(`gyldig_til.is.null,gyldig_til.gte.${naa}`)
-      .order('kjede').order('tittel').range(fra, fra + 999);
-    if (error) throw error;
-    alle.push(...data);
-    if (data.length < 1000) break;
-  }
-  return alle;
-});
-
+// ---------- Innstillinger ----------
 const innstillingStore = lagStore(async () => {
   const { data, error } = await supabase.from('innstillinger').select('*').eq('id', 1).single();
   if (error) throw error;
@@ -125,39 +111,76 @@ const innstillingStore = lagStore(async () => {
 export const useInnstillinger = () => useStore(innstillingStore);
 export const lastInnstillingerPaaNytt = () => innstillingStore.last();
 
-let autoSjekket = false;
-export function useTilbud() {
-  const tilbud = useStore(tilbudStore);
-  const inn = useInnstillinger();
-  const [henter, setHenter] = useState(false);
-  const [feil, setFeil] = useState('');
-  const kjorer = useRef(false);
+// ---------- Priser (Kassalapp) ----------
+// Mellomlager i appen: søkeord → { sok, treff, alle, hentet }
+const prisCache = new Map();
+const prisLytt = new Set();
+const prisVarsle = () => prisLytt.forEach((f) => f());
+const prisStatus = { laster: 0, feil: '' };
+const MAKS_ALDER = 12 * 3600_000;
+const sokeord = (navn) => normaliserNavn(navn);
+function normaliserNavn(s) { return (s || '').toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim(); }
 
-  const oppdater = useCallback(async (force = true) => {
-    if (kjorer.current) return;
-    kjorer.current = true;
-    setHenter(true); setFeil('');
-    try {
-      await callFunction('tilbud-sync', { force });
-      await Promise.all([tilbudStore.last(), innstillingStore.last()]);
-    } catch (e) {
-      setFeil(e.message);
-      innstillingStore.last().catch(() => {});
-    } finally {
-      kjorer.current = false;
-      setHenter(false);
+async function hentPriser(navnListe, force = false) {
+  const alle = [...new Set(navnListe.map(sokeord).filter((n) => n.length >= 3))];
+  if (!alle.length) return;
+  prisStatus.laster++; prisStatus.feil = ''; prisVarsle();
+  try {
+    // 1) Det som allerede ligger i databasen
+    const mangler = alle.filter((n) => !prisCache.has(n));
+    if (mangler.length && !force) {
+      const { data } = await supabase.from('pris_cache').select('sok, data').in('sok', mangler);
+      for (const r of data || []) prisCache.set(r.sok, r.data);
+      prisVarsle();
     }
-  }, []);
+    // 2) Det som mangler eller er gammelt hentes fra Kassalapp via serverfunksjonen
+    const gamle = alle.filter((n) => force || !prisCache.get(n) || Date.now() - Date.parse(prisCache.get(n).hentet) > MAKS_ALDER);
+    for (let i = 0; i < gamle.length; i += 20) {
+      const svar = await callFunction('priser', { navn: gamle.slice(i, i + 20), force });
+      for (const [k, v] of Object.entries(svar.resultater || {})) prisCache.set(k, v);
+      if (svar.feil?.length) prisStatus.feil = svar.feil[0].replace(/^[^:]+:\s*/, '');
+      prisVarsle();
+    }
+  } catch (e) {
+    prisStatus.feil = e.message;
+  } finally {
+    prisStatus.laster--; prisVarsle();
+  }
+}
 
-  // Hent automatisk hvis tilbudene er eldre enn 12 timer
+export function usePriser(navnListe) {
+  const [, tving] = useState(0);
+  const nokkel = [...new Set((navnListe || []).map(sokeord))].sort().join('|');
   useEffect(() => {
-    if (!inn || autoSjekket) return;
-    autoSjekket = true;
-    const alder = inn.tilbud_hentet ? Date.now() - Date.parse(inn.tilbud_hentet) : Infinity;
-    if (alder > 12 * 3600_000) oppdater(false);
-  }, [inn, oppdater]);
+    const f = () => tving((x) => x + 1);
+    prisLytt.add(f);
+    return () => prisLytt.delete(f);
+  }, []);
+  useEffect(() => {
+    if (!nokkel) return undefined;
+    const t = setTimeout(() => hentPriser(nokkel.split('|')), 500);
+    return () => clearTimeout(t);
+  }, [nokkel]);
+  return {
+    pris: (navn) => prisCache.get(sokeord(navn)),
+    laster: prisStatus.laster > 0,
+    feil: prisStatus.feil,
+    oppdater: () => hentPriser(nokkel.split('|').filter(Boolean), true),
+  };
+}
 
-  return { tilbud: tilbud || [], lastet: tilbud != null, inn, henter, feil, oppdater };
+export async function sokPris(q) {
+  const data = await callFunction('sok', { q });
+  prisCache.set(sokeord(q), data);
+  prisVarsle();
+  return data;
+}
+
+// Treff filtrert på valgte kjeder, billigst først
+export function treffI(data, butikker) {
+  if (!data?.treff) return [];
+  const valgt = butikker?.length ? new Set(butikker) : null;
+  return data.treff.filter((t) => !valgt || valgt.has(t.kode));
 }
 
 // ---------- Middager ----------

@@ -1,6 +1,6 @@
 # Oppsett av BraRyd familieplanlegger
 
-Første utgave: ukeplan for middager med minne over hva dere har spist, middagsbibliotek med oppskriftslenker og ingredienser, felles handleliste med kategorier (oppdateres live hos alle), lagrede lister, Siri/HomePod-snarveier og ukens tilbud fra matkjedene.
+Første utgave: ukeplan for middager med minne over hva dere har spist, middagsbibliotek med oppskriftslenker og ingredienser, felles handleliste med kategorier (oppdateres live hos alle), lagrede lister, Siri/HomePod-snarveier og dagens priser per kjede fra Kassalapp.
 
 Samme oppskrift som Alvøen-appen: Supabase (database) + GitHub Pages (nettsiden). Regn med ca. 40 minutter. Ingen programmering trengs.
 
@@ -43,7 +43,7 @@ Glemt passord: **Authentication → Users** → trykk på personen → sett nytt
    - Merk: å endre navnet senere endrer ikke adressen. Har funksjonen fått en annen adresse (slug), legg den inn som `VITE_FUNCTION_NAME` i `.env.production`.
    - Funksjonen sjekker selv Siri-nøkkelen og om du er i familien.
 
-Ingen hemmeligheter trengs. Tilbudene hentes fra Tjek (samme kilde som Mattilbud og eTilbudsavis), som ikke krever nøkkel.
+3. **Kassalapp-nøkkel (for priser):** lag en gratis API-nøkkel på **kassal.app/api**. I Supabase: **Edge Functions → Secrets → Add new secret**, navn `KASSALAPP_API_KEY`, verdi = nøkkelen. Nøkkelen er hemmelig og skal bare ligge her, ikke i koden.
 
 ## 4. Send meg to verdier
 
@@ -61,12 +61,11 @@ Koden ligger i GitHub-prosjektet `Jurgmaister/braryd-family`. Hver gang koden en
 2. Appen blir liggende på `https://jurgmaister.github.io/braryd-family/`.
    (Vil du heller ha eget domene, f.eks. `app.braryd.no`, legger vi inn en CNAME-fil og en DNS-peker som for Alvøen.)
 
-Arbeidsflyten **Hent ukens tilbud** kjører hver morgen og fyller på tilbudene. Appen henter også selv hvis de er eldre enn 12 timer.
 
 ## 6. På telefonene
 
 1. Åpne adressen i **Safari** → **Del → Legg til på Hjem-skjerm**. Åpne appen derfra og logg inn.
-2. **Innstillinger** (tannhjulet): sjekk navnet ditt, og under **Tilbud** trykk **Bruk min posisjon** → velg avstand og kjeder → **Lagre og hent tilbud**. Standard er Bergen sentrum, 15 km.
+2. **Innstillinger** (tannhjulet): sjekk navnet ditt, og velg under **Priser** hvilke kjeder dere handler i.
 
 ---
 
@@ -113,8 +112,18 @@ Snarveiene virker på HomePod når **Personlige forespørsler** er slått på: *
 
 **Middager.** Alt dere har spist, med antall ganger og når sist. Hver middag kan ha lenke til oppskrift, ingredienser (én per linje), notat og favorittstjerne. Sorter på mest spist, sist spist, lenge siden, A–Å eller favoritter.
 
-**Handleliste.** Skriv flere varer på en gang: «melk, 2 agurk og brød». Varene sorteres i kategorier i den rekkefølgen man går i butikken. Endrer du kategori på en vare, husker appen det neste gang. Trykk på sirkelen når varen er i kurven. Lagre-knappen øverst lagrer listen (f.eks. «Hyttetur»), og liste-knappen henter lagrede lister fram igjen. Varer som er på tilbud får et merke med laveste pris og kjede.
+**Handleliste.** Skriv flere varer på en gang: «melk, 2 agurk og brød». Varene sorteres i kategorier i den rekkefølgen man går i butikken. Endrer du kategori på en vare, husker appen det neste gang. Trykk på sirkelen når varen er i kurven. Lagre-knappen øverst lagrer listen (f.eks. «Hyttetur»), og liste-knappen henter lagrede lister fram igjen. Hver vare får et merke med hvor den er billigst i dag, og rødt merke ved prisfall.
 
-**Tilbud.** «På handlelisten» viser tilbud på varene dere skal kjøpe, billigst først. «Alle tilbud» lar deg søke og filtrere på kjede i alle kundeavisene i nærheten. Trykk på bildet for større visning, og på **+** for å legge varen på listen.
+**Priser.** Dagens priser fra Kassalapp (nettbutikkenes priser). «Handlelisten» viser hva hele listen koster i hver kjede, varer med prisfall de siste ukene, og de billigste kjedene per vare (sammenlignet på kilo- eller literpris når den finnes). «Søk» finner en vare på tvers av kjedene. Prisene mellomlagres i 12 timer, og oppdater-knappen henter på nytt. Ukens kundeaviser er ikke med.
 
 Kategoriene og stikkordene ligger i tabellene `kategorier` og `kategori_ord` i Supabase og kan endres der.
+
+---
+
+## Bytte fra tilbud (Tjek) til priser (Kassalapp)
+
+Gjelder hvis du satte opp appen før priser kom inn:
+
+1. **SQL Editor → New query**: lim inn hele `supabase/priser.sql` og **Run**.
+2. **Edge Functions → Secrets**: legg til `KASSALAPP_API_KEY` med nøkkelen fra kassal.app/api.
+3. **Edge Functions → braryd → Code**: erstatt koden med hele `supabase/functions/braryd/index.ts` og trykk **Deploy**. «Verify JWT» skal fortsatt være av.

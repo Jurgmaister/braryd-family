@@ -283,3 +283,20 @@ img { max-width: 100%; }
   background: var(--ink); color: #fff; padding: 11px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;
   max-width: calc(100% - 32px); box-shadow: 0 6px 20px rgba(0,0,0,.18); animation: opp .2s ease-out;
 }
+
+/* ---------- Priser ---------- */
+.tilbudmerke-rolig { color: var(--pine); background: var(--pine-soft); }
+.pris-graa { color: var(--ink); font-weight: 700; font-size: 16px; }
+.prisfall { align-self: flex-start; font-size: 12px; font-weight: 700; color: var(--clay); }
+.tilbud-tekst { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.innrykk { padding-left: 4px; }
+.prisrader { list-style: none; padding: 4px 0; }
+.prisrader li + li { border-top: 1px solid var(--line); }
+.prisrad { width: 100%; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 10px 14px; text-align: left; cursor: pointer; }
+.prisrad .kjedemerke { flex-shrink: 0; min-width: 64px; text-align: center; }
+.prisrad-navn { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prisrad-pris { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+.flere { padding: 8px 14px; }
+.totalliste { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.totalliste li { display: flex; align-items: center; gap: 10px; }
+.totalliste .kjedemerke { min-width: 72px; text-align: center; }

@@ -3,7 +3,7 @@ import Icon from './Icon.jsx';
 const TABS = [
   { id: 'uke', label: 'Ukeplan', icon: 'calendar', href: '#/' },
   { id: 'handle', label: 'Handleliste', icon: 'cart', href: '#/handle' },
-  { id: 'tilbud', label: 'Tilbud', icon: 'tag', href: '#/tilbud' },
+  { id: 'tilbud', label: 'Priser', icon: 'tag', href: '#/tilbud' },
   { id: 'middager', label: 'Middager', icon: 'book', href: '#/middager' },
 ];
 
