@@ -3,6 +3,10 @@ import { supabase, callFunction } from './supabase.js';
 import { PERSONFARGER, FAMILIEFARGE } from './config.js';
 
 // ---------- Innlogging ----------
+// Hver kanal må ha et unikt navn – samme navn to steder samtidig får Supabase til å kaste feil.
+let kanalNr = 0;
+export const kanalnavn = (navn) => `${navn}-${++kanalNr}`;
+
 export function useSession() {
   const [session, setSession] = useState(undefined); // undefined = laster
   useEffect(() => {
@@ -79,7 +83,7 @@ export function useHandleliste() {
 
   useEffect(() => {
     hent();
-    const kanal = supabase.channel('handleliste')
+    const kanal = supabase.channel(kanalnavn('handleliste'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'handleliste' }, (p) => {
         setVarer((liste) => {
           if (!liste) return liste;
@@ -288,7 +292,7 @@ function useTabell(tabell, hentFn) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     hent();
-    const kanal = supabase.channel(`${tabell}-endringer`)
+    const kanal = supabase.channel(kanalnavn(tabell))
       .on('postgres_changes', { event: '*', schema: 'public', table: tabell }, () => hent())
       .subscribe();
     const paaNytt = () => { if (document.visibilityState === 'visible') hent(); };

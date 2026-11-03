@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
 import {
-  useMiddager, hentPlan, settPlan, fjernPlan, middagFraNavn, leggTilVarer,
+  useMiddager, hentPlan, settPlan, fjernPlan, middagFraNavn, leggTilVarer, kanalnavn,
 } from '../data.js';
 import {
   UKEDAGER, MND, isoDato, iDag, mandagI, leggTilDager, ukenummer, fraIso, relativDato, ingrediensLinjer, normaliser,
@@ -31,7 +31,7 @@ export default function Uke() {
 
   useEffect(() => {
     last().catch(() => {});
-    const kanal = supabase.channel('middagsplan')
+    const kanal = supabase.channel(kanalnavn('middagsplan'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'middagsplan' }, () => last().catch(() => {}))
       .subscribe();
     return () => { supabase.removeChannel(kanal); };
