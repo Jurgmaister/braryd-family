@@ -355,3 +355,15 @@ img { max-width: 100%; }
 .topbar-knapper .ikonknapp { width: 38px; }
 .chip-on .prikk { box-shadow: 0 0 0 1.5px #fff; }
 .feilkode { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+
+/* ---------- Ukedager, påminnelser, flere varsler ---------- */
+.stack-liten { display: flex; flex-direction: column; gap: 8px; }
+.ukedager { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.ukedag { border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 9px 0; font-weight: 600; font-size: 14px; cursor: pointer; text-transform: capitalize; }
+.ukedag-on { background: var(--pine); border-color: var(--pine); color: #fff; }
+.tidfelt, .velger { font: inherit; font-size: 16px; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 9px 10px; color: var(--ink); }
+.velger { appearance: none; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236A716B' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right: 32px; min-width: 0; }
+.varselikon { color: var(--pine); display: inline-flex; }
+.pauseliste .vare { opacity: .7; }
+.lenkeknapp { display: inline-flex; align-items: center; gap: 4px; }
+.inputrad > input.tidfelt { width: auto; flex: 0 0 auto; min-width: 120px; }

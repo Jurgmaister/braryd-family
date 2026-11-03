@@ -177,6 +177,7 @@ export function forekomster(h, fra, til) {
 export const GJENTAKELSE_OPPGAVE = [
   { id: 'ingen', navn: 'Engangs' },
   { id: 'daglig', navn: 'Hver dag' },
+  { id: 'ukedager', navn: 'Bestemte ukedager' },
   { id: 'ukentlig', navn: 'Hver uke' },
   { id: 'annenhver_uke', navn: 'Annenhver uke' },
   { id: 'maanedlig', navn: 'Hver måned' },
@@ -202,3 +203,28 @@ export function fristTekst(frist) {
 }
 
 export const klokke = (t) => (t ? String(t).slice(0, 5) : '');
+
+// 1 = mandag … 7 = søndag
+export const UKEDAG_KORT = ['', 'man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn'];
+export function dagerTekst(dager) {
+  const d = [...(dager || [])].sort();
+  if (!d.length) return 'velg dager';
+  if (d.join() === '1,2,3,4,5') return 'hverdager';
+  if (d.join() === '6,7') return 'helg';
+  if (d.length === 7) return 'hver dag';
+  return d.map((x) => UKEDAG_KORT[x]).join(', ');
+}
+export function gjentakTekst(o) {
+  if (o.gjentakelse === 'ukedager') return dagerTekst(o.dager);
+  return (GJENTAKELSE_OPPGAVE.find((g) => g.id === o.gjentakelse)?.navn || '').toLowerCase();
+}
+// Første dato fra og med i dag som er en av ukedagene
+export function forsteUkedag(dager, fra = iDag()) {
+  let d = fraIso(fra);
+  for (let i = 0; i < 7; i++) {
+    const dow = ((d.getDay() + 6) % 7) + 1;
+    if ((dager || []).includes(dow)) return isoDato(d);
+    d = leggTilDager(d, 1);
+  }
+  return fra;
+}

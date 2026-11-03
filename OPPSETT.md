@@ -148,3 +148,14 @@ Arbeidsflyten **Send varsler** på GitHub kaller funksjonen hvert kvarter. GitHu
 **Kalender.** Felles familiekalender og én per person, med filter øverst. Avtaler, treninger (gjerne ukentlig), bursdager (årlig, viser alder hvis fødselsår er lagt inn) og flerdagers hendelser. Push-varsel før start, eller for heldagshendelser og bursdager kl. 08 samme dag / kl. 18 dagen før / en uke før. Bursdager varsles til hele familien, personlige hendelser til den det gjelder.
 
 **Melding.** Bjella øverst sender en push-melding til hele familien eller én person.
+
+---
+
+## Ukedager, påminnelser, pause og flere varsler
+
+Kjør `supabase/familie2.sql` i **SQL Editor → New query → Run**, og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
+
+- **Oppgaver på bestemte ukedager:** velg «Bestemte ukedager» og trykk dagene (eller «Hverdager»/«Helg»). Neste frist blir neste valgte dag.
+- **Push-påminnelse:** slå av/på per oppgave og velg klokkeslett. Varsel kommer på fristdagen, og igjen dagen etter hvis den ikke er gjort.
+- **Pause:** åpne oppgaven → «Sett på pause», eventuelt til en dato. Oppgaven flyttes til «På pause» og sender ingen varsler. Starter den igjen (selv eller på datoen), flyttes en passert frist til neste gang.
+- **Flere varsler i kalenderen:** inntil tre push-varsler per hendelse. Bursdager får som standard samme dag kl. 08, dagen før kl. 18 og en uke før kl. 08.

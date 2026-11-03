@@ -70,7 +70,7 @@ function Skall({ route, email }) {
   const antall = (liste.varer || []).filter((v) => !v.kjopt).length;
   const idag = iDag();
   const meg = email.toLowerCase();
-  const antallOppgaver = (oppgaver || []).filter((o) => !o.ferdig && o.frist && o.frist <= idag
+  const antallOppgaver = (oppgaver || []).filter((o) => !o.ferdig && !o.pauset && o.frist && o.frist <= idag
     && (!o.tildelt || o.tildelt.toLowerCase() === meg)).length;
 
   useEffect(() => { fornyAbonnement(); }, []);

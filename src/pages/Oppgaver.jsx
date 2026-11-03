@@ -3,6 +3,7 @@ import { supabase, callFunction } from '../supabase.js';
 import { useOppgaver, useMedlemmer, navnFor, fargeFor, lagreOppgave } from '../data.js';
 import {
   iDag, isoDato, fraIso, leggTilDager, fristTekst, GJENTAKELSE_OPPGAVE, initialer, relativDato,
+  gjentakTekst, UKEDAG_KORT, forsteUkedag, kortDato,
 } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
 import Sheet from '../components/Sheet.jsx';
@@ -10,7 +11,6 @@ import Icon from '../components/Icon.jsx';
 import { toast } from '../components/Toast.jsx';
 
 const FORSLAG = ['Støvsuge', 'Vaske matboks', 'Tømme søppel', 'Tømme oppvaskmaskinen', 'Rydde rommet', 'Bære ut papp og plast', 'Vaske badet', 'Re opp senga'];
-const gjentakNavn = (id) => GJENTAKELSE_OPPGAVE.find((g) => g.id === id)?.navn || '';
 
 export default function Oppgaver({ email }) {
   const { rader, setRader, feil } = useOppgaver();
@@ -18,6 +18,7 @@ export default function Oppgaver({ email }) {
   const [filter, setFilter] = useState('alle');
   const [apen, setApen] = useState(null);
   const [visFerdige, setVisFerdige] = useState(false);
+  const [visPause, setVisPause] = useState(false);
   const meg = email.toLowerCase();
   const idag = iDag();
   const ukeslutt = isoDato(leggTilDager(fraIso(idag), 7 - ((fraIso(idag).getDay() + 6) % 7) - 1));
@@ -28,7 +29,8 @@ export default function Oppgaver({ email }) {
     if (filter === 'ingen') return !o.tildelt;
     return (o.tildelt || '').toLowerCase() === filter;
   });
-  const aapne = synlige.filter((o) => !o.ferdig);
+  const aapne = synlige.filter((o) => !o.ferdig && !o.pauset);
+  const pausede = synlige.filter((o) => !o.ferdig && o.pauset);
   const ferdige = synlige.filter((o) => o.ferdig).sort((a, b) => (b.ferdig_tid || '').localeCompare(a.ferdig_tid || ''));
 
   const grupper = useMemo(() => {
@@ -46,13 +48,13 @@ export default function Oppgaver({ email }) {
     ].filter(([, , l]) => l.length);
   }, [aapne, idag, ukeslutt]);
 
-  const mineAntall = (rader || []).filter((o) => !o.ferdig && (o.tildelt || '').toLowerCase() === meg).length;
+  const mineAntall = (rader || []).filter((o) => !o.ferdig && !o.pauset && (o.tildelt || '').toLowerCase() === meg).length;
 
   async function fullfor(o) {
     setRader((l) => l.map((x) => (x.id === o.id ? { ...x, ferdig: true, ferdig_av: meg, ferdig_tid: new Date().toISOString() } : x)));
     const { error } = await supabase.rpc('fullfor_oppgave', { p_id: o.id });
     if (error) toast(error.message);
-    else toast(o.gjentakelse !== 'ingen' ? `Bra! Neste gang: ${gjentakNavn(o.gjentakelse).toLowerCase()}` : 'Bra jobba! ✔︎');
+    else toast(o.gjentakelse !== 'ingen' ? `Bra! Kommer igjen ${gjentakTekst(o)}` : 'Bra jobba! ✔︎');
   }
   async function angre(o) {
     const { error } = await supabase.rpc('angre_oppgave', { p_id: o.id });
@@ -93,6 +95,22 @@ export default function Oppgaver({ email }) {
         </section>
       ))}
 
+      {pausede.length > 0 && (
+        <section className="gruppe">
+          <button type="button" className="gruppe-tittel kurv-knapp" onClick={() => setVisPause(!visPause)}>
+            ⏸ På pause ({pausede.length})
+            <span className={visPause ? 'roter' : ''}><Icon name="chevronD" size={18} /></span>
+          </button>
+          {visPause && (
+            <ul className="card varer pauseliste">
+              {pausede.map((o) => (
+                <OppgaveRad key={o.id} o={o} medlemmer={medlemmer} idag={idag} onFullfor={() => fullfor(o)} onApne={() => setApen(o)} />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {ferdige.length > 0 && (
         <section className="gruppe">
           <button type="button" className="gruppe-tittel kurv-knapp" onClick={() => setVisFerdige(!visFerdige)}>
@@ -132,7 +150,9 @@ function OppgaveRad({ o, medlemmer, idag, onFullfor, onApne }) {
         <span className="vare-navn">{o.tittel}</span>
         <span className="oppgave-info">
           {o.frist && <span className={over ? 'frist frist-over' : o.frist === idag ? 'frist frist-idag' : 'frist'}>{fristTekst(o.frist)}</span>}
-          {o.gjentakelse !== 'ingen' && <span className="muted liten"><Icon name="refresh" size={12} /> {gjentakNavn(o.gjentakelse).toLowerCase()}</span>}
+          {o.pauset && <span className="frist">⏸ pause{o.pauset_til ? ` til ${kortDato(o.pauset_til)}` : ''}</span>}
+          {o.gjentakelse !== 'ingen' && <span className="muted liten"><Icon name="refresh" size={12} /> {gjentakTekst(o)}</span>}
+          {o.varsel === false && !o.pauset && <span className="muted liten" title="Ingen push-påminnelse"><Icon name="bellOff" size={12} /></span>}
         </span>
       </button>
       {hvem
@@ -145,8 +165,14 @@ function OppgaveRad({ o, medlemmer, idag, onFullfor, onApne }) {
 function OppgaveSkjema({ oppgave, medlemmer, meg, onClose }) {
   const [f, setF] = useState({});
   const [jobber, setJobber] = useState(false);
+  const [pauseValg, setPauseValg] = useState(false);
+  const [pauseTil, setPauseTil] = useState('');
   useEffect(() => {
-    setF(oppgave ? { gjentakelse: 'ingen', tildelt: null, frist: '', ...oppgave, frist: oppgave.frist || '' } : {});
+    setF(oppgave ? {
+      gjentakelse: 'ingen', tildelt: null, varsel: true, ...oppgave,
+      frist: oppgave.frist || '', dager: oppgave.dager || [], varsel_tid: String(oppgave.varsel_tid || '07:00').slice(0, 5),
+    } : {});
+    setPauseValg(false);
   }, [oppgave]);
   if (!oppgave) return null;
   const ny = !oppgave.id;
@@ -156,9 +182,15 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, onClose }) {
 
   async function lagre() {
     if (!f.tittel?.trim()) { toast('Skriv hva som skal gjøres'); return; }
+    if (f.gjentakelse === 'ukedager' && !(f.dager || []).length) { toast('Velg minst én ukedag'); return; }
     setJobber(true);
     try {
-      const lagret = await lagreOppgave(f);
+      const rad = { ...f };
+      // Ukedager uten frist (eller frist på feil dag): første valgte dag fra i dag
+      if (rad.gjentakelse === 'ukedager' && (!rad.frist || !rad.dager.includes(((fraIso(rad.frist).getDay() + 6) % 7) + 1))) {
+        rad.frist = forsteUkedag(rad.dager, rad.frist && rad.frist > iDag() ? rad.frist : iDag());
+      }
+      const lagret = await lagreOppgave(rad);
       const nyAnsvarlig = lagret.tildelt && lagret.tildelt.toLowerCase() !== meg
         && (ny || (oppgave.tildelt || '').toLowerCase() !== lagret.tildelt.toLowerCase());
       if (nyAnsvarlig) {
@@ -167,6 +199,15 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, onClose }) {
       } else toast('Lagret');
       onClose();
     } catch (e) { toast(e.message); } finally { setJobber(false); }
+  }
+
+  async function pause(paa) {
+    setJobber(true);
+    const { error } = await supabase.rpc('pause_oppgave', { p_id: oppgave.id, p_pause: paa, p_til: paa && pauseTil ? pauseTil : null });
+    setJobber(false);
+    if (error) { toast(error.message.includes('pause_oppgave') ? 'Kjør familie2.sql i Supabase for å bruke pause' : error.message); return; }
+    toast(paa ? 'Satt på pause – ingen påminnelser' : 'Startet igjen');
+    onClose();
   }
 
   async function slett() {
@@ -217,14 +258,76 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, onClose }) {
           </div>
         </div>
         <label className="field">Gjentakelse
-          <select value={f.gjentakelse || 'ingen'} onChange={(e) => setF({ ...f, gjentakelse: e.target.value, frist: f.frist || (e.target.value !== 'ingen' ? iDag() : '') })}>
+          <select value={f.gjentakelse || 'ingen'} onChange={(e) => setF({ ...f, gjentakelse: e.target.value, frist: f.frist || (e.target.value !== 'ingen' && e.target.value !== 'ukedager' ? iDag() : '') })}>
             {GJENTAKELSE_OPPGAVE.map((g) => <option key={g.id} value={g.id}>{g.navn}</option>)}
           </select>
         </label>
-        {f.gjentakelse !== 'ingen' && <p className="muted liten">Når den krysses av, kommer den tilbake med ny frist ({gjentakNavn(f.gjentakelse).toLowerCase()}).</p>}
+        {f.gjentakelse === 'ukedager' && (
+          <div className="stack-liten">
+            <div className="ukedager">
+              {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+                const paa = (f.dager || []).includes(d);
+                return (
+                  <button key={d} type="button" className={paa ? 'ukedag ukedag-on' : 'ukedag'} aria-pressed={paa}
+                    onClick={() => setF({ ...f, dager: paa ? f.dager.filter((x) => x !== d) : [...(f.dager || []), d] })}>
+                    {UKEDAG_KORT[d]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="chips">
+              <button type="button" className="chip" onClick={() => setF({ ...f, dager: [1, 2, 3, 4, 5] })}>Hverdager</button>
+              <button type="button" className="chip" onClick={() => setF({ ...f, dager: [6, 7] })}>Helg</button>
+            </div>
+          </div>
+        )}
+        {f.gjentakelse !== 'ingen' && <p className="muted liten">Når den krysses av, kommer den tilbake med ny frist ({gjentakTekst(f)}).</p>}
+        <div className="card innfelt stack-liten">
+          <label className="sjekk">
+            <input type="checkbox" checked={f.varsel !== false} onChange={(e) => setF({ ...f, varsel: e.target.checked })} />
+            <Icon name="bell" size={18} /> Push-påminnelse
+          </label>
+          {f.varsel !== false && (
+            <>
+              <div className="inputrad">
+                <span className="muted vokse">Klokkeslett på fristdagen</span>
+                <input type="time" className="tidfelt" value={f.varsel_tid || '07:00'} onChange={(e) => setF({ ...f, varsel_tid: e.target.value })} />
+              </div>
+              <p className="muted liten">
+                {f.tildelt ? `${f.tildelt.toLowerCase() === meg ? 'Du' : navnFor(medlemmer, f.tildelt)} får` : 'Hele familien får'} varsel på fristdagen, og igjen dagen etter hvis den ikke er gjort.
+                {!f.frist && f.gjentakelse === 'ingen' ? ' Krever en frist.' : ''}
+              </p>
+            </>
+          )}
+        </div>
         <label className="field">Notat
           <textarea rows={2} value={f.notat || ''} onChange={(e) => setF({ ...f, notat: e.target.value })} placeholder="Valgfritt" />
         </label>
+        {!ny && (
+          <div className="card innfelt stack-liten">
+            {oppgave.pauset ? (
+              <>
+                <p><b>⏸ På pause</b>{oppgave.pauset_til ? ` til ${kortDato(oppgave.pauset_til)}` : ''}. Ingen påminnelser sendes.</p>
+                <button type="button" className="btn btn-ghost" disabled={jobber} onClick={() => pause(false)}>Start igjen nå</button>
+              </>
+            ) : pauseValg ? (
+              <>
+                <p className="feltnavn">Sett på pause</p>
+                <div className="inputrad">
+                  <span className="muted vokse">Til og med (valgfritt)</span>
+                  <input type="date" className="tidfelt" value={pauseTil} min={iDag()} onChange={(e) => setPauseTil(e.target.value)} />
+                </div>
+                <p className="muted liten">{pauseTil ? `Starter igjen av seg selv ${kortDato(pauseTil)}.` : 'Står på pause til noen starter den igjen.'} Oppgaven og push-varslene stoppes så lenge.</p>
+                <div className="knapperad">
+                  <button type="button" className="btn btn-ghost" onClick={() => setPauseValg(false)}>Avbryt</button>
+                  <button type="button" className="btn btn-primary vokse" disabled={jobber} onClick={() => pause(true)}>Sett på pause</button>
+                </div>
+              </>
+            ) : (
+              <button type="button" className="btn btn-ghost" onClick={() => { setPauseTil(''); setPauseValg(true); }}>⏸ Sett på pause</button>
+            )}
+          </div>
+        )}
         {!ny && oppgave.opprettet_av && <p className="muted liten">Laget av {navnFor(medlemmer, oppgave.opprettet_av)}.</p>}
       </div>
     </Sheet>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
-import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse } from '../data.js';
+import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor } from '../data.js';
 import {
   UKEDAGER, MND, isoDato, iDag, fraIso, mandagI, leggTilDager, forekomster, klokke, GJENTAKELSE_HENDELSE,
 } from '../util.js';
@@ -16,8 +16,8 @@ const TYPER = [
   { id: 'bursdag', navn: 'Bursdag', ikon: '🎂' },
   { id: 'annet', navn: 'Annet', ikon: '📌' },
 ];
-const VARSEL_TID = [['', 'Ingen varsel'], ['0', 'Når det starter'], ['15', '15 min før'], ['30', '30 min før'], ['60', '1 time før'], ['120', '2 timer før'], ['1440', 'Dagen før']];
-const VARSEL_HELDAG = [['', 'Ingen varsel'], ['-480', 'Samme dag kl. 08'], ['360', 'Dagen før kl. 18'], ['9600', 'En uke før kl. 08']];
+const VARSEL_TID = [['0', 'Når det starter'], ['15', '15 min før'], ['30', '30 min før'], ['60', '1 time før'], ['120', '2 timer før'], ['1440', 'Dagen før, samme tid'], ['10080', 'En uke før, samme tid']];
+const VARSEL_HELDAG = [['-480', 'Samme dag kl. 08'], ['-720', 'Samme dag kl. 12'], ['-1080', 'Samme dag kl. 18'], ['360', 'Dagen før kl. 18'], ['1800', 'To dager før kl. 18'], ['9600', 'En uke før kl. 08'], ['19680', 'To uker før kl. 08']];
 const ikonFor = (type) => TYPER.find((t) => t.id === type)?.ikon || '📅';
 
 // Hendelser for et datointervall, utvidet med gjentakelser og flerdagers hendelser
@@ -176,7 +176,7 @@ function HendelseRad({ h, medlemmer, visDato, onApne }) {
           <span className="muted liten">
             {hvem}{h.sted ? ` · ${h.sted}` : ''}
             {h.gjentakelse !== 'ingen' && h.type !== 'bursdag' ? ' · gjentas' : ''}
-            {h.varsel_min != null ? ' · 🔔' : ''}
+            {varslerFor(h).length ? ` · ${'🔔'.repeat(varslerFor(h).length)}` : ''}
           </span>
         </span>
       </button>
@@ -192,11 +192,11 @@ function HendelseSkjema({ hendelse, medlemmer, meg, onClose }) {
     if (hendelse.id) {
       setF({
         ...hendelse, heldag: !hendelse.tid, tid: klokke(hendelse.tid), slutt_tid: klokke(hendelse.slutt_tid),
-        varsel_min: hendelse.varsel_min == null ? '' : String(hendelse.varsel_min),
+        varsler: varslerFor(hendelse).map(String),
         sluttdato: hendelse.sluttdato || '', gjentar_til: hendelse.gjentar_til || '', fodselsar: hendelse.fodselsar || '',
       });
     } else {
-      setF({ type: 'avtale', eier: null, dato: hendelse.dato || iDag(), heldag: false, tid: '17:00', slutt_tid: '', gjentakelse: 'ingen', varsel_min: '60', sted: '', notat: '', sluttdato: '', gjentar_til: '', fodselsar: '' });
+      setF({ type: 'avtale', eier: null, dato: hendelse.dato || iDag(), heldag: false, tid: '17:00', slutt_tid: '', gjentakelse: 'ingen', varsler: ['60'], sted: '', notat: '', sluttdato: '', gjentar_til: '', fodselsar: '' });
     }
   }, [hendelse]);
   if (!hendelse) return null;
@@ -204,15 +204,22 @@ function HendelseSkjema({ hendelse, medlemmer, meg, onClose }) {
   const sett = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   function velgType(type) {
-    if (type === 'bursdag') setF({ ...f, type, heldag: true, gjentakelse: 'aarlig', varsel_min: '-480', eier: null });
-    else if (type === 'trening') setF({ ...f, type, heldag: false, gjentakelse: f.gjentakelse === 'aarlig' ? 'ukentlig' : (f.gjentakelse === 'ingen' ? 'ukentlig' : f.gjentakelse), varsel_min: f.varsel_min === '-480' ? '60' : f.varsel_min });
+    if (type === 'bursdag') setF({ ...f, type, heldag: true, gjentakelse: 'aarlig', varsler: f.type === 'bursdag' ? f.varsler : ['-480', '360', '9600'], eier: null });
+    else if (type === 'trening') setF({ ...f, type, heldag: false, gjentakelse: f.gjentakelse === 'aarlig' || f.gjentakelse === 'ingen' ? 'ukentlig' : f.gjentakelse, varsler: tilpass(f.varsler, false) });
     else setF({ ...f, type, gjentakelse: f.type === 'bursdag' ? 'ingen' : f.gjentakelse });
   }
-  function settHeldag(heldag) {
-    const v = f.varsel_min;
-    const passer = (heldag ? VARSEL_HELDAG : VARSEL_TID).some(([k]) => k === v);
-    setF({ ...f, heldag, varsel_min: passer ? v : (heldag ? '-480' : '60') });
+  // Beholder varsler som finnes for valgt type (heldag/klokkeslett), ellers et fornuftig standardvalg
+  function tilpass(varsler, heldag) {
+    const lov = (heldag ? VARSEL_HELDAG : VARSEL_TID).map(([k]) => k);
+    const beholdt = (varsler || []).filter((v) => lov.includes(v));
+    return beholdt.length || !(varsler || []).length ? beholdt : [heldag ? '-480' : '60'];
   }
+  function settHeldag(heldag) { setF({ ...f, heldag, varsler: tilpass(f.varsler, heldag) }); }
+  const valg = f.heldag || f.type === 'bursdag' ? VARSEL_HELDAG : VARSEL_TID;
+  const varsler = f.varsler || [];
+  const settVarsel = (i, v) => setF({ ...f, varsler: varsler.map((x, j) => (j === i ? v : x)) });
+  const fjernVarsel = (i) => setF({ ...f, varsler: varsler.filter((_, j) => j !== i) });
+  const nyttVarsel = () => setF({ ...f, varsler: [...varsler, valg.map(([k]) => k).find((k) => !varsler.includes(k)) || valg[0][0]] });
 
   async function lagre() {
     if (!f.tittel?.trim()) { toast(f.type === 'bursdag' ? 'Skriv hvem som har bursdag' : 'Gi hendelsen et navn'); return; }
@@ -284,11 +291,23 @@ function HendelseSkjema({ hendelse, medlemmer, meg, onClose }) {
             )}
           </>
         )}
-        <label className="field">Push-varsel
-          <select value={f.varsel_min ?? ''} onChange={sett('varsel_min')}>
-            {(f.heldag || bursdag ? VARSEL_HELDAG : VARSEL_TID).map(([k, navn]) => <option key={k} value={k}>{navn}</option>)}
-          </select>
-        </label>
+        <div>
+          <p className="feltnavn">Push-varsel {varsler.length ? `(${varsler.length} av 3)` : ''}</p>
+          <div className="stack-liten">
+            {varsler.map((v, i) => (
+              <div key={i} className="inputrad">
+                <span className="varselikon"><Icon name="bell" size={16} /></span>
+                <select className="vokse velger" value={v} onChange={(e) => settVarsel(i, e.target.value)}>
+                  {valg.map(([k, navn]) => <option key={k} value={k} disabled={k !== v && varsler.includes(k)}>{navn}</option>)}
+                </select>
+                <button type="button" className="ikonknapp" onClick={() => fjernVarsel(i)} aria-label="Fjern varsel"><Icon name="close" size={18} /></button>
+              </div>
+            ))}
+            {varsler.length < 3 && (
+              <button type="button" className="lenkeknapp" onClick={nyttVarsel}><Icon name="plus" size={16} /> {varsler.length ? 'Legg til et varsel til' : 'Legg til varsel'}</button>
+            )}
+          </div>
+        </div>
         <p className="muted liten">
           {bursdag ? 'Bursdager varsles til hele familien.' : f.eier ? `Varselet går til ${navnFor(medlemmer, f.eier)}.` : 'Varselet går til hele familien.'}
           {!bursdag && f.gjentakelse !== 'ingen' ? ' Endringer gjelder alle gjentakelsene.' : ''}

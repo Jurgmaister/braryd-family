@@ -313,29 +313,42 @@ export function useHendelser() {
   return useTabell('hendelser', () => supabase.from('hendelser').select('*').order('dato'));
 }
 
+// Lagrer en rad. Mangler en kolonne (ny SQL-fil ikke kjørt ennå), prøves det igjen uten den.
+async function lagreRad(tabell, id, rad) {
+  const r = { ...rad };
+  for (let forsok = 0; forsok < 8; forsok++) {
+    const q = id ? supabase.from(tabell).update(r).eq('id', id) : supabase.from(tabell).insert(r);
+    const { data, error } = await q.select().single();
+    if (!error) return data;
+    const kolonne = error.code === 'PGRST204' && error.message.match(/'([^']+)' column/)?.[1];
+    if (!kolonne || !(kolonne in r)) throw error;
+    delete r[kolonne];
+  }
+  throw new Error('Kunne ikke lagre');
+}
+
 export async function lagreOppgave(o) {
-  const rad = {
+  const ukedager = o.gjentakelse === 'ukedager';
+  return lagreRad('oppgaver', o.id, {
     tittel: o.tittel.trim(), notat: o.notat || '', tildelt: o.tildelt || null,
     frist: o.frist || null, gjentakelse: o.gjentakelse || 'ingen',
-  };
-  const q = o.id ? supabase.from('oppgaver').update(rad).eq('id', o.id) : supabase.from('oppgaver').insert(rad);
-  const { data, error } = await q.select().single();
-  if (error) throw error;
-  return data;
+    dager: ukedager ? [...(o.dager || [])].sort() : null,
+    varsel: o.varsel !== false, varsel_tid: o.varsel_tid || '07:00',
+  });
 }
 
 export async function lagreHendelse(h) {
-  const rad = {
+  const varsler = [...new Set((h.varsler || []).filter((v) => v !== '' && v != null).map(Number))].slice(0, 3);
+  return lagreRad('hendelser', h.id, {
     tittel: h.tittel.trim(), type: h.type || 'avtale', eier: h.eier || null, dato: h.dato,
     tid: h.heldag ? null : (h.tid || null), slutt_tid: h.heldag ? null : (h.slutt_tid || null),
     sluttdato: h.sluttdato && h.sluttdato > h.dato ? h.sluttdato : null,
     sted: h.sted || '', notat: h.notat || '', gjentakelse: h.gjentakelse || 'ingen',
     gjentar_til: h.gjentakelse && h.gjentakelse !== 'ingen' ? (h.gjentar_til || null) : null,
     fodselsar: h.type === 'bursdag' && h.fodselsar ? Number(h.fodselsar) : null,
-    varsel_min: h.varsel_min === '' || h.varsel_min == null ? null : Number(h.varsel_min),
-  };
-  const q = h.id ? supabase.from('hendelser').update(rad).eq('id', h.id) : supabase.from('hendelser').insert(rad);
-  const { data, error } = await q.select().single();
-  if (error) throw error;
-  return data;
+    varsler: varsler.length ? varsler : null,
+    varsel_min: varsler.length ? varsler[0] : null,
+  });
 }
+
+export const varslerFor = (h) => (Array.isArray(h.varsler) && h.varsler.length ? h.varsler : (h.varsel_min != null ? [h.varsel_min] : []));

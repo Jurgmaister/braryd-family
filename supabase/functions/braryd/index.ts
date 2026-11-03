@@ -486,40 +486,49 @@ async function varsle() {
   const idag = o.dato;
   const sendt: string[] = [];
 
-  // 1) Oppgaver
-  const { data: oppgaver } = await admin.from("oppgaver").select("id, tittel, tildelt, frist")
+  // 1) Oppgaver: start pausede oppgaver igjen når pausen er over (krever familie2.sql)
+  await admin.rpc("gjenoppta_pausede").then(() => {}, () => {});
+  const { data: oppgaver } = await admin.from("oppgaver").select("*")
     .eq("ferdig", false).not("frist", "is", null).gte("frist", leggTil(idag, -7)).lte("frist", idag);
+  const naaMin = o.time * 60 + o.minutt;
   for (const t of oppgaver ?? []) {
+    if (t.varsel === false || t.pauset) continue;           // påminnelse av, eller på pause
+    const [vt, vm] = String(t.varsel_tid || "07:00").split(":").map(Number);
+    if (naaMin < vt * 60 + vm) continue;                     // ikke klokkeslettet ennå i dag
     const til = t.tildelt ? [t.tildelt] : null;
-    if (t.frist === idag && o.time >= 7 && await forsteGang(`oppgave-idag:${t.id}`)) {
-      await pushTil(til, { title: `I dag: ${t.tittel}`, body: t.tildelt ? "Frist i dag." : "Frist i dag – hvem tar den?", url: "#/oppgaver", tag: `oppgave-${t.id}` });
+    if (t.frist === idag && await forsteGang(`oppgave-idag:${t.id}`)) {
+      await pushTil(til, { title: `I dag: ${t.tittel}`, body: t.tildelt ? "Påminnelse – frist i dag." : "Frist i dag – hvem tar den?", url: "#/oppgaver", tag: `oppgave-${t.id}` });
       sendt.push(`idag ${t.tittel}`);
     }
-    if (t.frist < idag && o.time >= 8 && await forsteGang(`oppgave-forfalt:${t.id}`)) {
+    if (t.frist < idag && await forsteGang(`oppgave-forfalt:${t.id}`)) {
       await pushTil(til, { title: `Over fristen: ${t.tittel}`, body: `Fristen var ${pentDato(t.frist)}.`, url: "#/oppgaver", tag: `oppgave-${t.id}` });
       sendt.push(`forfalt ${t.tittel}`);
     }
   }
 
-  // 2) Kalender: hendelser og bursdager med varsel
-  const { data: hendelser } = await admin.from("hendelser").select("*").not("varsel_min", "is", null).lte("dato", leggTil(idag, 9));
+  // 2) Kalender: hendelser og bursdager med ett eller flere varsler
+  const { data: hendelser } = await admin.from("hendelser").select("*").lte("dato", leggTil(idag, 15));
   for (const h of hendelser ?? []) {
-    for (const dato of forekomster(h, leggTil(idag, -1), leggTil(idag, 9))) {
+    const varsler: number[] = Array.isArray(h.varsler) && h.varsler.length ? h.varsler : (h.varsel_min != null ? [h.varsel_min] : []);
+    if (!varsler.length) continue;
+    for (const dato of forekomster(h, leggTil(idag, -1), leggTil(idag, 15))) {
       const start = osloTil(dato, h.tid ? String(h.tid).slice(0, 5) : "00:00");
-      const sendes = start - h.varsel_min * 60_000;
-      if (naa < sendes || naa > sendes + 6 * 3600_000) continue; // ikke ennå, eller for gammelt
-      if (!(await forsteGang(`hendelse:${h.id}:${dato}`))) continue;
-      const naar = dato === idag ? "i dag" : dato === leggTil(idag, 1) ? "i morgen" : pentDato(dato);
-      let varsel: Varsel;
-      if (h.type === "bursdag") {
-        const alder = h.fodselsar ? Number(dato.slice(0, 4)) - h.fodselsar : null;
-        varsel = { title: `🎂 ${h.tittel} har bursdag ${naar}`, body: alder ? `Fyller ${alder} år.` : "Husk gratulasjonen!", url: "#/kalender", tag: `hendelse-${h.id}` };
-      } else {
-        const kl = h.tid ? ` kl. ${String(h.tid).slice(0, 5)}` : "";
-        varsel = { title: h.tittel, body: `${naar[0].toUpperCase()}${naar.slice(1)}${kl}${h.sted ? ` · ${h.sted}` : ""}`, url: "#/kalender", tag: `hendelse-${h.id}` };
+      for (const min of varsler) {
+        const sendes = start - min * 60_000;
+        if (naa < sendes || naa > sendes + 6 * 3600_000) continue; // ikke ennå, eller for gammelt
+        if (!(await forsteGang(`hendelse:${h.id}:${dato}:${min}`))) continue;
+        const naar = dato === idag ? "i dag" : dato === leggTil(idag, 1) ? "i morgen" : pentDato(dato);
+        let varsel: Varsel;
+        if (h.type === "bursdag") {
+          const alder = h.fodselsar ? Number(dato.slice(0, 4)) - h.fodselsar : null;
+          varsel = { title: `🎂 ${h.tittel} har bursdag ${naar}`, body: alder ? `Fyller ${alder} år.` : "Husk gratulasjonen!", url: "#/", tag: `hendelse-${h.id}-${min}` };
+        } else {
+          const kl = h.tid ? ` kl. ${String(h.tid).slice(0, 5)}` : "";
+          varsel = { title: h.tittel, body: `${naar[0].toUpperCase()}${naar.slice(1)}${kl}${h.sted ? ` · ${h.sted}` : ""}`, url: "#/", tag: `hendelse-${h.id}-${min}` };
+        }
+        await pushTil(h.eier && h.type !== "bursdag" ? [h.eier] : null, varsel);
+        sendt.push(`hendelse ${h.tittel} ${dato} (${min})`);
       }
-      await pushTil(h.eier && h.type !== "bursdag" ? [h.eier] : null, varsel);
-      sendt.push(`hendelse ${h.tittel} ${dato}`);
     }
   }
 
