@@ -1,0 +1,16 @@
+{
+  "name": "BraRyd familieplanlegger",
+  "short_name": "BraRyd",
+  "description": "Middager, handleliste og ukens tilbud for familien.",
+  "lang": "nb",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F6F1E9",
+  "theme_color": "#F6F1E9",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

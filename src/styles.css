@@ -1,0 +1,285 @@
+:root {
+  --ground: #F6F1E9;      /* havre */
+  --card: #FFFFFF;
+  --sunk: #EFE8DC;
+  --ink: #1F2A24;
+  --muted: #6A716B;
+  --line: #E7DFD2;
+  --border: #D8CFBF;
+  --pine: #2F5D50;        /* primær */
+  --pine-dark: #23483E;
+  --pine-soft: #E2ECE6;
+  --clay: #C8613F;        /* tilbud og priser */
+  --clay-soft: #FBE6DC;
+  --butter: #F3C969;      /* i dag */
+  --danger: #B3402A;
+  --font: Figtree, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tabbar-h: 66px;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+a { color: var(--pine); }
+button { font-family: inherit; color: inherit; }
+h1, h2, p { margin: 0; }
+ul, ol { margin: 0; }
+img { max-width: 100%; }
+
+.app { min-height: 100dvh; display: flex; flex-direction: column; }
+.app-content { flex: 1; padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 20px); }
+
+.page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: calc(16px + env(safe-area-inset-top)) 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.page.narrow { max-width: 420px; }
+.page.laster { min-height: 60dvh; align-items: center; justify-content: center; }
+
+/* ---------- Typografi ---------- */
+.h1 { font-weight: 700; font-size: 30px; line-height: 1.1; letter-spacing: -0.02em; }
+.h2 { font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.stor-tittel { font-weight: 700; font-size: 21px; line-height: 1.2; }
+.muted { color: var(--muted); }
+.liten { font-size: 13px; }
+.sentrert { text-align: center; }
+.feil { color: var(--danger); background: #FBE3DD; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.seksjonstittel, .feltnavn { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0; }
+.feltinfo { font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; }
+
+/* ---------- Topplinje ---------- */
+.topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-top: 6px; }
+.topbar-under { margin-top: 4px; font-size: 14px; }
+.topbar-knapper { display: flex; gap: 4px; }
+
+/* ---------- Knapper ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 0 18px; border-radius: 14px; border: 0;
+  font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.btn:disabled { opacity: .55; cursor: default; }
+.btn-lg { min-height: 52px; width: 100%; font-size: 16px; }
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: 14px; border-radius: 10px; }
+.btn-primary { background: var(--pine); color: #fff; }
+.btn-primary:hover { background: var(--pine-dark); color: #fff; }
+.btn-ghost { background: var(--card); color: var(--ink); border: 1px solid var(--border); }
+.btn-ghost.fare { color: var(--danger); }
+.ikonknapp {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; border-radius: 12px; border: 0; background: transparent; color: var(--ink);
+  cursor: pointer; flex-shrink: 0; text-decoration: none;
+}
+.ikonknapp:hover { background: var(--sunk); }
+.ikonknapp:disabled { opacity: .4; }
+.ikonknapp-fylt { background: var(--pine); color: #fff; }
+.ikonknapp-fylt:hover { background: var(--pine-dark); }
+.ikonknapp-liten { width: 34px; height: 34px; background: var(--pine-soft); color: var(--pine); }
+.lenkeknapp { background: none; border: 0; padding: 4px 0; color: var(--pine); font-weight: 600; font-size: 15px; cursor: pointer; text-align: left; }
+.lenkeknapp.muted { color: var(--muted); font-weight: 500; font-size: 14px; }
+.knapperad { display: flex; gap: 8px; align-items: center; }
+.vokse { flex: 1; min-width: 0; }
+.snurr svg { animation: snurr 1s linear infinite; }
+@keyframes snurr { to { transform: rotate(360deg); } }
+
+/* ---------- Skjema ---------- */
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }
+.field input, .field textarea, .field select, .inputrad > input, .leggtil input, .sokefelt input {
+  font: inherit; font-weight: 400; font-size: 16px; color: var(--ink);
+  border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  padding: 11px 12px; width: 100%; min-width: 0;
+}
+.field textarea { resize: vertical; line-height: 1.45; }
+.field input:focus, .field textarea:focus, .field select:focus, .leggtil input:focus, .inputrad > input:focus { outline: 2px solid var(--pine); outline-offset: -1px; border-color: var(--pine); }
+.field.smal { width: 96px; flex-shrink: 0; }
+.inputrad { display: flex; gap: 8px; align-items: center; }
+.inputrad .field { margin: 0; }
+.sjekk { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.sjekk input { width: 20px; height: 20px; accent-color: var(--pine); }
+
+.sokefelt {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; color: var(--muted);
+}
+.sokefelt input { border: 0; padding: 12px 0; background: transparent; }
+.sokefelt input:focus { outline: none; }
+.sokefelt:focus-within { border-color: var(--pine); box-shadow: 0 0 0 1px var(--pine); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips.scroll { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 2px 16px; scrollbar-width: none; }
+.chips.scroll::-webkit-scrollbar { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--card); border-radius: 999px;
+  padding: 7px 13px; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.chip-on { border-color: var(--pine); background: var(--pine); color: #fff; }
+.prikk { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+.segment { display: flex; background: var(--sunk); border-radius: 12px; padding: 4px; }
+.seg { flex: 1; border: 0; background: transparent; padding: 9px 8px; border-radius: 9px; font-weight: 600; font-size: 14px; color: var(--muted); cursor: pointer; }
+.seg-on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+/* ---------- Kort og lister ---------- */
+.card { background: var(--card); border-radius: 18px; padding: 16px; border: 1px solid var(--line); }
+.card.innfelt { background: var(--ground); border: 0; }
+.tom { text-align: center; padding: 32px 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.kortliste { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.merke { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--pine); background: var(--pine-soft); padding: 4px 8px; border-radius: 8px; white-space: nowrap; }
+
+.spinner { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--pine); animation: snurr .8s linear infinite; margin: 24px auto; }
+
+/* ---------- Ukeplan ---------- */
+.ukenav { display: flex; align-items: center; justify-content: space-between; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+.ukenav-tekst { font-weight: 600; }
+.dager { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dag {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; cursor: pointer; color: var(--muted);
+}
+.dag-dato { display: flex; flex-direction: column; align-items: center; width: 42px; flex-shrink: 0; color: var(--ink); }
+.dag-ukedag { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.dag-tall { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.dag-innhold { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dag-middag { font-weight: 600; font-size: 17px; color: var(--ink); }
+.dag-tom { color: var(--muted); }
+.dag-merke { color: var(--pine); }
+.dag-idag { border-color: var(--pine); box-shadow: inset 4px 0 0 var(--butter); }
+.dag-idag .dag-tall { color: var(--pine); }
+.dag-forbi { opacity: .62; }
+
+.velgrad {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 12px 2px; cursor: pointer; color: var(--muted);
+}
+.velgrad-tekst { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.velgrad-navn { font-weight: 600; color: var(--ink); display: inline-flex; align-items: center; gap: 4px; }
+.velgrad-navn svg { color: var(--butter); }
+.velgrad-ny { color: var(--pine); font-weight: 600; }
+.sheet .chips { margin: 12px 0 4px; }
+
+/* ---------- Middager ---------- */
+.middagkort { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; padding: 14px 16px; }
+.middagkort-tekst { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.middagkort-navn { font-weight: 600; font-size: 16px; display: inline-flex; align-items: center; gap: 5px; }
+.middagkort-navn svg { color: var(--butter); }
+
+/* ---------- Handleliste ---------- */
+.leggtil {
+  position: sticky; top: calc(env(safe-area-inset-top)); z-index: 5;
+  display: flex; gap: 8px; padding: 8px 0; background: var(--ground);
+}
+.leggtil input { padding: 13px 14px; border-radius: 14px; }
+.leggtil .ikonknapp { width: 50px; height: 50px; border-radius: 14px; }
+.gruppe { display: flex; flex-direction: column; gap: 8px; }
+.gruppe-tittel { font-size: 14px; font-weight: 700; color: var(--muted); display: flex; align-items: center; gap: 6px; padding-left: 4px; }
+.kurv-knapp { background: none; border: 0; cursor: pointer; padding: 6px 4px; }
+.roter { transform: rotate(180deg); display: inline-flex; }
+.varer { list-style: none; padding: 4px 0; }
+.vare { display: flex; align-items: center; gap: 4px; padding: 2px 10px 2px 4px; }
+.vare + .vare { border-top: 1px solid var(--line); }
+.hake {
+  width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; cursor: pointer; position: relative; color: #fff;
+}
+.hake::before { content: ''; position: absolute; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); }
+.hake svg { position: relative; }
+.vare-kjopt .hake::before { background: var(--pine); border-color: var(--pine); }
+.vare-tekst { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; background: none; border: 0; text-align: left; padding: 10px 0; cursor: pointer; }
+.vare-navn { font-size: 16px; font-weight: 500; }
+.vare-antall { font-weight: 700; margin-right: 6px; color: var(--pine); }
+.vare-kjopt .vare-navn { text-decoration: line-through; color: var(--muted); }
+.tilbudmerke { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--clay); background: var(--clay-soft); padding: 3px 8px; border-radius: 7px; }
+.hvem {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: var(--pine); background: var(--pine-soft);
+}
+.minitilbud { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.minitilbud li { display: flex; align-items: center; gap: 10px; }
+.minitilbud img { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--line); }
+.minitilbud-tittel { display: block; font-weight: 600; font-size: 14px; }
+.lagrede { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lagrede li { display: flex; align-items: center; gap: 10px; padding: 12px; }
+.lagret-navn { font-weight: 700; }
+
+/* ---------- Tilbud ---------- */
+.tilbudliste { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tilbud { display: flex; gap: 12px; padding: 10px 12px 10px 10px; align-items: stretch; }
+.tilbud-billigst { border-color: var(--clay); box-shadow: 0 0 0 1px var(--clay); }
+.tilbud-bilde {
+  width: 72px; height: 72px; flex-shrink: 0; border-radius: 12px; border: 1px solid var(--line); background: #fff;
+  display: flex; align-items: center; justify-content: center; padding: 3px; cursor: zoom-in; color: var(--muted);
+}
+.tilbud-bilde img { width: 100%; height: 100%; object-fit: contain; }
+.tilbud-tekst { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kjedemerke { align-self: flex-start; font-size: 11px; font-weight: 700; color: #fff; padding: 2px 7px; border-radius: 6px; letter-spacing: .02em; }
+.tilbud-tittel { font-weight: 700; font-size: 15px; line-height: 1.25; }
+.tilbud-beskrivelse { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tilbud-pris { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; flex-shrink: 0; }
+.tilbud-pris .ikonknapp { margin-top: auto; }
+.pris { font-weight: 800; font-size: 18px; color: var(--clay); white-space: nowrap; }
+.forpris { font-size: 12px; color: var(--muted); text-decoration: line-through; }
+.stortbilde { width: 100%; max-height: 50dvh; object-fit: contain; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+
+/* ---------- Innstillinger ---------- */
+.nokkelboks { display: flex; flex-direction: column; gap: 8px; background: var(--ground); border-radius: 14px; padding: 12px; }
+.nokkelboks code { font-size: 13px; word-break: break-all; background: #fff; border: 1px solid var(--line); padding: 8px 10px; border-radius: 10px; }
+.veiledning { font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
+.veiledning ol, .veiledning ul { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.veiledning code { background: var(--sunk); padding: 1px 5px; border-radius: 5px; font-size: 13px; }
+.field select { appearance: none; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236A716B' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center; }
+
+/* ---------- Innlogging ---------- */
+.login { padding-top: calc(48px + env(safe-area-inset-top)); }
+.login-merke { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 8px; text-align: center; }
+.login-merke img { border-radius: 18px; margin-bottom: 6px; }
+
+/* ---------- Panel nederfra ---------- */
+.sheet-bakgrunn { position: fixed; inset: 0; z-index: 50; background: rgba(25, 32, 28, .42); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s ease-out; }
+.sheet {
+  width: 100%; max-width: 600px; max-height: 92dvh; background: var(--card);
+  border-radius: 22px 22px 0 0; display: flex; flex-direction: column; animation: opp .2s ease-out;
+}
+.sheet-topp { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 6px 18px; }
+.sheet-innhold { overflow-y: auto; padding: 6px 18px 18px; -webkit-overflow-scrolling: touch; }
+.sheet-bunn { padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+@keyframes fade { from { opacity: 0; } }
+@keyframes opp { from { transform: translateY(40px); opacity: .6; } }
+@media (min-width: 640px) {
+  .sheet-bakgrunn { align-items: center; }
+  .sheet { border-radius: 22px; }
+}
+
+/* ---------- Fanemeny ---------- */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; justify-content: space-around;
+  background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+.tab { flex: 1; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0; font-size: 11.5px; font-weight: 500; color: var(--muted); text-decoration: none; }
+.tab-on { color: var(--pine); font-weight: 700; }
+.tab-ikon { position: relative; display: inline-flex; }
+.tab-tall { position: absolute; top: -5px; right: -11px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--clay); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 60;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 14px);
+  background: var(--ink); color: #fff; padding: 11px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;
+  max-width: calc(100% - 32px); box-shadow: 0 6px 20px rgba(0,0,0,.18); animation: opp .2s ease-out;
+}
