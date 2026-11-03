@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import Icon from './Icon.jsx';
+import SendMelding from './SendMelding.jsx';
 
 export default function Topbar({ tittel, under, children }) {
+  const [melding, setMelding] = useState(false);
   return (
     <header className="topbar">
       <div className="topbar-tekst">
@@ -9,8 +12,10 @@ export default function Topbar({ tittel, under, children }) {
       </div>
       <div className="topbar-knapper">
         {children}
+        <button type="button" className="ikonknapp" onClick={() => setMelding(true)} aria-label="Send melding til familien"><Icon name="bell" /></button>
         <a className="ikonknapp" href="#/innstillinger" aria-label="Innstillinger"><Icon name="gear" /></a>
       </div>
+      <SendMelding open={melding} onClose={() => setMelding(false)} />
     </header>
   );
 }

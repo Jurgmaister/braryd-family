@@ -8,8 +8,16 @@
 //   priser         – dagens priser per kjede for en liste varenavn (fra Kassalapp), med 12 timers mellomlager.
 //                    POST {"action":"priser","navn":["Melk","Kjøttdeig"],"force":false}. Kun familiemedlemmer.
 //   sok            – søk etter en vare på tvers av kjedene (fra Kassalapp). Kun familiemedlemmer.
+//   push-abonner   – lagrer push-abonnementet for denne telefonen (familiemedlem).
+//   push-avslutt   – fjerner et push-abonnement.
+//   push-test      – sender et testvarsel til egne enheter.
+//   send-melding   – push-melding til hele familien eller én person {til, tittel, tekst}.
+//   oppgave-tildelt– varsler den som har fått en oppgave {id}.
+//   varsle         – automatiske varsler: oppgaver med frist i dag / over fristen, kalenderhendelser
+//                    og bursdager. Kalles hvert kvarter av GitHub Actions. Åpen, men sender aldri dobbelt.
 //
-// Hemmelighet (Edge Functions → Secrets): KASSALAPP_API_KEY (fra kassal.app/api).
+// Hemmeligheter (Edge Functions → Secrets): KASSALAPP_API_KEY (fra kassal.app/api),
+// VAPID_PUBLIC_KEY og VAPID_PRIVATE_KEY (push-nøklene).
 //
 // Siri-handlingene svarer med vanlig tekst, slik at snarveien kan lese svaret høyt.
 // SUPABASE_URL og SUPABASE_SERVICE_ROLE_KEY settes automatisk av Supabase.
@@ -107,14 +115,14 @@ async function siriLes(nokkel: string | null) {
 }
 
 // ---------- Tilgang ----------
-async function erMedlem(req: Request) {
+async function medlemEpost(req: Request): Promise<string | null> {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token || token.split(".").length !== 3) return false; // publiserbar nøkkel ≠ innlogget bruker
+  if (!token || token.split(".").length !== 3) return null; // publiserbar nøkkel ≠ innlogget bruker
   const { data, error } = await admin.auth.getUser(token);
   const email = data?.user?.email?.toLowerCase();
-  if (error || !email) return false;
+  if (error || !email) return null;
   const { data: m } = await admin.from("medlemmer").select("email").ilike("email", email).maybeSingle();
-  return Boolean(m);
+  return m ? m.email.toLowerCase() : null;
 }
 
 // ---------- Treff mellom varenavn og produktnavn ----------
@@ -253,6 +261,273 @@ async function sok(q: string) {
   return json(data);
 }
 
+// ---------- Hjelpere ----------
+const enc = new TextEncoder();
+
+function b64urlToBytes(s: string): Uint8Array {
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
+  const bin = atob(b64);
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+function bytesToB64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function concat(...parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let i = 0;
+  for (const p of parts) { out.set(p, i); i += p.length; }
+  return out;
+}
+
+// Tåler at verdien er limt inn med anførselstegn, mellomrom eller «NAVN=» foran.
+function secret(name: string): string {
+  const unquote = (s: string) => s.trim().replace(/^["']+|["']+$/g, "").trim();
+  let v = unquote(Deno.env.get(name) ?? "");
+  if (v.toUpperCase().startsWith(name + "=")) v = unquote(v.slice(name.length + 1));
+  return v;
+}
+
+async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, length: number) {
+  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, key, length * 8);
+  return new Uint8Array(bits);
+}
+
+// ---------- VAPID (RFC 8292) ----------
+type Vapid = { publicKey: string; signingKey: CryptoKey; subject: string };
+let vapidCache: Vapid | null = null;
+
+async function getVapid(): Promise<Vapid> {
+  if (vapidCache) return vapidCache;
+  const publicKey = secret("VAPID_PUBLIC_KEY");
+  const privateKey = secret("VAPID_PRIVATE_KEY");
+  let subject = secret("VAPID_SUBJECT") || "mailto:jorgen.rydheim@gmail.com";
+  if (!publicKey || !privateKey) {
+    throw new Error("Push-nøklene mangler. Legg inn VAPID_PUBLIC_KEY og VAPID_PRIVATE_KEY under Edge Functions → Secrets.");
+  }
+  if (!/^(mailto:|https:)/.test(subject)) subject = `mailto:${subject}`;
+  let pub: Uint8Array, d: Uint8Array;
+  try {
+    pub = b64urlToBytes(publicKey);
+    d = b64urlToBytes(privateKey);
+  } catch {
+    throw new Error("Push-nøklene har feil format. Kopier dem på nytt fra nøkkelfilen.");
+  }
+  if (pub.length !== 65 || pub[0] !== 4) throw new Error("VAPID_PUBLIC_KEY er feil. Kopier den på nytt fra nøkkelfilen.");
+  if (d.length !== 32) throw new Error("VAPID_PRIVATE_KEY er feil. Kopier den på nytt fra nøkkelfilen.");
+  const jwk = {
+    kty: "EC", crv: "P-256", ext: true,
+    x: bytesToB64url(pub.slice(1, 33)), y: bytesToB64url(pub.slice(33, 65)), d: bytesToB64url(d),
+  };
+  let signingKey: CryptoKey;
+  try {
+    signingKey = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  } catch {
+    throw new Error("Push-nøklene hører ikke sammen. Kopier begge på nytt fra samme nøkkelfil.");
+  }
+  vapidCache = { publicKey: bytesToB64url(pub), signingKey, subject };
+  return vapidCache;
+}
+
+async function vapidHeader(endpoint: string, vapid: Vapid): Promise<string> {
+  const aud = new URL(endpoint).origin;
+  const header = bytesToB64url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const claims = bytesToB64url(enc.encode(JSON.stringify({
+    aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: vapid.subject,
+  })));
+  const unsigned = `${header}.${claims}`;
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, vapid.signingKey, enc.encode(unsigned)));
+  return `vapid t=${unsigned}.${bytesToB64url(sig)}, k=${vapid.publicKey}`;
+}
+
+// ---------- Kryptering av innholdet (RFC 8291, aes128gcm) ----------
+async function encryptPayload(payload: Uint8Array, p256dh: string, auth: string): Promise<Uint8Array> {
+  const uaPublic = b64urlToBytes(p256dh);
+  const authSecret = b64urlToBytes(auth);
+  const uaKey = await crypto.subtle.importKey("raw", uaPublic, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const asKeys = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]) as CryptoKeyPair;
+  const asPublic = new Uint8Array(await crypto.subtle.exportKey("raw", asKeys.publicKey));
+  const ecdhSecret = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, asKeys.privateKey, 256));
+
+  const keyInfo = concat(enc.encode("WebPush: info\0"), uaPublic, asPublic);
+  const ikm = await hkdf(authSecret, ecdhSecret, keyInfo, 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, enc.encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(salt, ikm, enc.encode("Content-Encoding: nonce\0"), 12);
+
+  const aesKey = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
+  const plaintext = concat(payload, new Uint8Array([2]));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aesKey, plaintext));
+
+  const rs = new Uint8Array([0, 0, 16, 0]); // 4096
+  return concat(salt, rs, new Uint8Array([asPublic.length]), asPublic, ciphertext);
+}
+
+async function sendPush(sub: { endpoint: string; p256dh: string; auth: string }, payload: string, vapid: Vapid) {
+  const body = await encryptPayload(enc.encode(payload), sub.p256dh, sub.auth);
+  return fetch(sub.endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: await vapidHeader(sub.endpoint, vapid),
+      "Content-Encoding": "aes128gcm",
+      "Content-Type": "application/octet-stream",
+      TTL: String(60 * 60 * 24),
+      Urgency: "normal",
+    },
+    body,
+  });
+}
+
+
+
+// ---------- Sende push til familien ----------
+type Varsel = { title: string; body: string; url?: string; tag?: string };
+
+// mottakere: liste med e-poster, eller null = alle
+async function pushTil(mottakere: string[] | null, varsel: Varsel) {
+  let q = admin.from("push_abonnement").select("endpoint, p256dh, auth, email");
+  if (mottakere) {
+    if (!mottakere.length) return 0;
+    q = q.in("email", mottakere.map((e) => e.toLowerCase()));
+  }
+  const { data: subs } = await q;
+  if (!subs?.length) return 0;
+  const vapid = await getVapid();
+  const payload = JSON.stringify(varsel);
+  const borte: string[] = [];
+  let sendt = 0;
+  await Promise.all(subs.map(async (s) => {
+    try {
+      const res = await sendPush(s, payload, vapid);
+      if (res.ok) sendt++;
+      else if (res.status === 404 || res.status === 410) borte.push(s.endpoint);
+    } catch { /* én enhet som feiler stopper ikke resten */ }
+  }));
+  if (borte.length) await admin.from("push_abonnement").delete().in("endpoint", borte);
+  return sendt;
+}
+
+async function navnPaa(email: string | null) {
+  if (!email) return "";
+  const { data } = await admin.from("medlemmer").select("navn").ilike("email", email).maybeSingle();
+  return data?.navn || email.split("@")[0];
+}
+
+// ---------- Norsk tid ----------
+const OSLO = "Europe/Oslo";
+function osloDeler(t: number) {
+  const f = new Intl.DateTimeFormat("en-CA", { timeZone: OSLO, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const d = Object.fromEntries(f.formatToParts(new Date(t)).map((p) => [p.type, p.value]));
+  return { dato: `${d.year}-${d.month}-${d.day}`, time: Number(d.hour), minutt: Number(d.minute) };
+}
+// Klokkeslett i Oslo → tidspunkt (ms)
+function osloTil(dato: string, hhmm = "00:00") {
+  const [y, m, d] = dato.split("-").map(Number);
+  const [h, mi] = hhmm.split(":").map(Number);
+  const gjett = Date.UTC(y, m - 1, d, h, mi);
+  const avvik = (t: number) => {
+    const o = osloDeler(t);
+    const [oy, om, od] = o.dato.split("-").map(Number);
+    return Date.UTC(oy, om - 1, od, o.time, o.minutt) - t;
+  };
+  return gjett - avvik(gjett - avvik(gjett));
+}
+const leggTil = (dato: string, dager: number) => {
+  const [y, m, d] = dato.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + dager)).toISOString().slice(0, 10);
+};
+const UKEDAG = ["søndag", "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag"];
+const MND = ["jan", "feb", "mar", "apr", "mai", "jun", "jul", "aug", "sep", "okt", "nov", "des"];
+const pentDato = (dato: string) => {
+  const [y, m, d] = dato.split("-").map(Number);
+  const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${UKEDAG[w]} ${d}. ${MND[m - 1]}`;
+};
+
+// Datoene en hendelse skjer innenfor [fra, til]
+function forekomster(h: any, fra: string, til: string): string[] {
+  const ut: string[] = [];
+  const start = h.dato as string;
+  const slutt = h.gjentar_til && h.gjentar_til < til ? h.gjentar_til : til;
+  if (h.gjentakelse === "ingen") return start >= fra && start <= til ? [start] : [];
+  const [sy, sm, sd] = start.split("-").map(Number);
+  for (let n = 0; n < 2000; n++) {
+    let d: string;
+    if (h.gjentakelse === "ukentlig") d = leggTil(start, 7 * n);
+    else if (h.gjentakelse === "annenhver_uke") d = leggTil(start, 14 * n);
+    else if (h.gjentakelse === "maanedlig") {
+      const t = new Date(Date.UTC(sy, sm - 1 + n, 1));
+      const dim = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+      d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), Math.min(sd, dim))).toISOString().slice(0, 10);
+    } else { // aarlig (29. feb → 28. feb i vanlige år)
+      const y = sy + n;
+      const dim = new Date(Date.UTC(y, sm, 0)).getUTCDate();
+      d = new Date(Date.UTC(y, sm - 1, Math.min(sd, dim))).toISOString().slice(0, 10);
+    }
+    if (d > slutt) break;
+    if (d >= fra) ut.push(d);
+  }
+  return ut;
+}
+
+// Reserverer en varselnøkkel; true bare første gang (så ingenting sendes dobbelt)
+async function forsteGang(nokkel: string) {
+  const { data } = await admin.from("sendte_varsler").upsert({ nokkel }, { onConflict: "nokkel", ignoreDuplicates: true }).select("nokkel");
+  return Boolean(data?.length);
+}
+
+async function varsle() {
+  const naa = Date.now();
+  const o = osloDeler(naa);
+  const idag = o.dato;
+  const sendt: string[] = [];
+
+  // 1) Oppgaver
+  const { data: oppgaver } = await admin.from("oppgaver").select("id, tittel, tildelt, frist")
+    .eq("ferdig", false).not("frist", "is", null).gte("frist", leggTil(idag, -7)).lte("frist", idag);
+  for (const t of oppgaver ?? []) {
+    const til = t.tildelt ? [t.tildelt] : null;
+    if (t.frist === idag && o.time >= 7 && await forsteGang(`oppgave-idag:${t.id}`)) {
+      await pushTil(til, { title: `I dag: ${t.tittel}`, body: t.tildelt ? "Frist i dag." : "Frist i dag – hvem tar den?", url: "#/oppgaver", tag: `oppgave-${t.id}` });
+      sendt.push(`idag ${t.tittel}`);
+    }
+    if (t.frist < idag && o.time >= 8 && await forsteGang(`oppgave-forfalt:${t.id}`)) {
+      await pushTil(til, { title: `Over fristen: ${t.tittel}`, body: `Fristen var ${pentDato(t.frist)}.`, url: "#/oppgaver", tag: `oppgave-${t.id}` });
+      sendt.push(`forfalt ${t.tittel}`);
+    }
+  }
+
+  // 2) Kalender: hendelser og bursdager med varsel
+  const { data: hendelser } = await admin.from("hendelser").select("*").not("varsel_min", "is", null).lte("dato", leggTil(idag, 9));
+  for (const h of hendelser ?? []) {
+    for (const dato of forekomster(h, leggTil(idag, -1), leggTil(idag, 9))) {
+      const start = osloTil(dato, h.tid ? String(h.tid).slice(0, 5) : "00:00");
+      const sendes = start - h.varsel_min * 60_000;
+      if (naa < sendes || naa > sendes + 6 * 3600_000) continue; // ikke ennå, eller for gammelt
+      if (!(await forsteGang(`hendelse:${h.id}:${dato}`))) continue;
+      const naar = dato === idag ? "i dag" : dato === leggTil(idag, 1) ? "i morgen" : pentDato(dato);
+      let varsel: Varsel;
+      if (h.type === "bursdag") {
+        const alder = h.fodselsar ? Number(dato.slice(0, 4)) - h.fodselsar : null;
+        varsel = { title: `🎂 ${h.tittel} har bursdag ${naar}`, body: alder ? `Fyller ${alder} år.` : "Husk gratulasjonen!", url: "#/kalender", tag: `hendelse-${h.id}` };
+      } else {
+        const kl = h.tid ? ` kl. ${String(h.tid).slice(0, 5)}` : "";
+        varsel = { title: h.tittel, body: `${naar[0].toUpperCase()}${naar.slice(1)}${kl}${h.sted ? ` · ${h.sted}` : ""}`, url: "#/kalender", tag: `hendelse-${h.id}` };
+      }
+      await pushTil(h.eier && h.type !== "bursdag" ? [h.eier] : null, varsel);
+      sendt.push(`hendelse ${h.tittel} ${dato}`);
+    }
+  }
+
+  // Rydd gamle nøkler
+  await admin.from("sendte_varsler").delete().lt("sendt", new Date(naa - 60 * 86400_000).toISOString());
+  return json({ ok: true, tid: `${idag} ${o.time}:${String(o.minutt).padStart(2, "0")}`, sendt });
+}
+
 // ---------- Ruting ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -268,10 +543,53 @@ Deno.serve(async (req) => {
   try {
     if (action === "siri-legg-til") return await siriLeggTil(p("nokkel"), p("tekst") || "");
     if (action === "siri-les") return await siriLes(p("nokkel"));
-    if (action === "priser" || action === "sok") {
-      if (!(await erMedlem(req))) return json({ error: "Logg inn på nytt" }, 401);
-      if (action === "priser") return await priser(Array.isArray(body.navn) ? body.navn : [], Boolean(body.force));
-      return await sok(p("q"));
+    if (action === "varsle") return await varsle();
+    if (action === "push-avslutt") {
+      if (p("endpoint")) await admin.from("push_abonnement").delete().eq("endpoint", p("endpoint"));
+      return json({ ok: true });
+    }
+
+    const meg = await medlemEpost(req);
+    if (!meg) return json({ error: "Logg inn på nytt" }, 401);
+
+    if (action === "priser") return await priser(Array.isArray(body.navn) ? body.navn : [], Boolean(body.force));
+    if (action === "sok") return await sok(p("q"));
+
+    if (action === "push-abonner") {
+      const sub = body.subscription;
+      if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json({ error: "Ugyldig abonnement" }, 400);
+      const { error } = await admin.from("push_abonnement").upsert({
+        endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, email: meg, oppdatert: new Date().toISOString(),
+      });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+    if (action === "push-test") {
+      const n = await pushTil([meg], { title: "BraRyd", body: "Varsler virker på denne telefonen 👍", url: "#/innstillinger" });
+      return json({ ok: true, sendt: n });
+    }
+    if (action === "send-melding") {
+      const tekst = String(body.tekst || "").trim().slice(0, 500);
+      if (!tekst) return json({ error: "Skriv en melding" }, 400);
+      const til = body.til ? String(body.til).toLowerCase() : null;
+      const fra = await navnPaa(meg);
+      await admin.from("meldinger").insert({ fra: meg, til, tittel: String(body.tittel || ""), tekst });
+      let mottakere: string[] | null = til ? [til] : null;
+      if (!til) {
+        const { data } = await admin.from("medlemmer").select("email");
+        mottakere = (data ?? []).map((m) => m.email.toLowerCase()).filter((e) => e !== meg);
+      }
+      const n = await pushTil(mottakere, { title: body.tittel ? `${fra}: ${body.tittel}` : `Melding fra ${fra}`, body: tekst, url: "#/" });
+      return json({ ok: true, sendt: n });
+    }
+    if (action === "oppgave-tildelt") {
+      const { data: t } = await admin.from("oppgaver").select("tittel, tildelt, frist").eq("id", Number(p("id"))).maybeSingle();
+      if (!t?.tildelt || t.tildelt.toLowerCase() === meg) return json({ ok: true, sendt: 0 });
+      const fra = await navnPaa(meg);
+      const n = await pushTil([t.tildelt], {
+        title: `Ny oppgave: ${t.tittel}`, body: `Fra ${fra}${t.frist ? ` · frist ${pentDato(t.frist)}` : ""}`, url: "#/oppgaver",
+      });
+      return json({ ok: true, sendt: n });
     }
     return json({ error: "Ukjent handling" }, 400);
   } catch (e) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, callFunction } from './supabase.js';
+import { PERSONFARGER, FAMILIEFARGE } from './config.js';
 
 // ---------- Innlogging ----------
 export function useSession() {
@@ -48,6 +49,11 @@ const medlemStore = lagStore(async () => {
 });
 export const useMedlemmer = () => useStore(medlemStore) || [];
 export const lastMedlemmerPaaNytt = () => medlemStore.last();
+export function fargeFor(medlemmer, email) {
+  if (!email) return FAMILIEFARGE;
+  const i = medlemmer.findIndex((m) => m.email.toLowerCase() === email.toLowerCase());
+  return i < 0 ? '#6A716B' : PERSONFARGER[i % PERSONFARGER.length];
+}
 export function navnFor(medlemmer, email) {
   if (!email) return '';
   return medlemmer.find((m) => m.email.toLowerCase() === email.toLowerCase())?.navn || email.split('@')[0];
@@ -270,4 +276,62 @@ export async function fjernPlan(dato) {
   const { error } = await supabase.from('middagsplan').delete().eq('dato', dato);
   if (error) throw error;
   middagStore.last().catch(() => {});
+}
+
+// ---------- Sanntidstabeller (oppgaver og kalender) ----------
+function useTabell(tabell, hentFn) {
+  const [rader, setRader] = useState(null);
+  const [feil, setFeil] = useState('');
+  const hent = useCallback(async () => {
+    const { data, error } = await hentFn();
+    if (error) setFeil(error.message); else { setFeil(''); setRader(data); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    hent();
+    const kanal = supabase.channel(`${tabell}-endringer`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: tabell }, () => hent())
+      .subscribe();
+    const paaNytt = () => { if (document.visibilityState === 'visible') hent(); };
+    document.addEventListener('visibilitychange', paaNytt);
+    return () => { supabase.removeChannel(kanal); document.removeEventListener('visibilitychange', paaNytt); };
+  }, [hent, tabell]);
+  return { rader, setRader, feil, hent };
+}
+
+export function useOppgaver() {
+  return useTabell('oppgaver', () => {
+    const grense = new Date(Date.now() - 14 * 86400000).toISOString();
+    return supabase.from('oppgaver').select('*').or(`ferdig.eq.false,ferdig_tid.gte."${grense}"`).order('frist', { nullsFirst: false }).order('opprettet');
+  });
+}
+
+export function useHendelser() {
+  return useTabell('hendelser', () => supabase.from('hendelser').select('*').order('dato'));
+}
+
+export async function lagreOppgave(o) {
+  const rad = {
+    tittel: o.tittel.trim(), notat: o.notat || '', tildelt: o.tildelt || null,
+    frist: o.frist || null, gjentakelse: o.gjentakelse || 'ingen',
+  };
+  const q = o.id ? supabase.from('oppgaver').update(rad).eq('id', o.id) : supabase.from('oppgaver').insert(rad);
+  const { data, error } = await q.select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function lagreHendelse(h) {
+  const rad = {
+    tittel: h.tittel.trim(), type: h.type || 'avtale', eier: h.eier || null, dato: h.dato,
+    tid: h.heldag ? null : (h.tid || null), slutt_tid: h.heldag ? null : (h.slutt_tid || null),
+    sluttdato: h.sluttdato && h.sluttdato > h.dato ? h.sluttdato : null,
+    sted: h.sted || '', notat: h.notat || '', gjentakelse: h.gjentakelse || 'ingen',
+    gjentar_til: h.gjentakelse && h.gjentakelse !== 'ingen' ? (h.gjentar_til || null) : null,
+    fodselsar: h.type === 'bursdag' && h.fodselsar ? Number(h.fodselsar) : null,
+    varsel_min: h.varsel_min === '' || h.varsel_min == null ? null : Number(h.varsel_min),
+  };
+  const q = h.id ? supabase.from('hendelser').update(rad).eq('id', h.id) : supabase.from('hendelser').insert(rad);
+  const { data, error } = await q.select().single();
+  if (error) throw error;
+  return data;
 }

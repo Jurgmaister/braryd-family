@@ -1,0 +1,29 @@
+name: Send varsler
+
+# Sjekker hvert kvarter om det skal sendes push-varsler:
+# oppgaver med frist i dag / over fristen, kalenderhendelser og bursdager.
+# Funksjonen husker hva som er sendt, så ingenting sendes to ganger.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  varsle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .env.production
+          sparse-checkout-cone-mode: false
+      - name: Kall funksjonen
+        run: |
+          set -euo pipefail
+          base=$(grep '^VITE_SUPABASE_URL=' .env.production | cut -d= -f2-)
+          key=$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | cut -d= -f2-)
+          # Feiler ikke jobben (unngår e-post fra GitHub hvert kvarter); svaret vises i loggen.
+          curl -sS --max-time 90 -X POST "$base/functions/v1/braryd" \
+            -H "Content-Type: application/json" -H "apikey: $key" \
+            -d '{"action":"varsle"}' || echo "Fikk ikke kontakt med funksjonen"

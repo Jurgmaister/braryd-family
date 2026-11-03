@@ -62,7 +62,9 @@ export default function Uke() {
 
   return (
     <main className="page">
-      <Topbar tittel="Ukeplan" under={`Uke ${ukenummer(f)} · ${periode}`} />
+      <Topbar tittel="Middag" under={`Uke ${ukenummer(f)} · ${periode}`}>
+        <a className="ikonknapp" href="#/middager" aria-label="Alle middager"><Icon name="book" /></a>
+      </Topbar>
 
       <div className="ukenav">
         <button type="button" className="ikonknapp" onClick={() => setMandag(leggTilDager(mandag, -7))} aria-label="Forrige uke"><Icon name="chevronL" /></button>

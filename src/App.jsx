@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { isConfigured } from './config.js';
 import { supabase } from './supabase.js';
-import { useSession, useHandleliste } from './data.js';
+import { useSession, useHandleliste, useOppgaver } from './data.js';
+import { fornyAbonnement } from './push.js';
+import { iDag } from './util.js';
 import Login from './pages/Login.jsx';
 import Uke from './pages/Uke.jsx';
 import Handleliste from './pages/Handleliste.jsx';
 import Priser from './pages/Priser.jsx';
 import Middager from './pages/Middager.jsx';
 import Innstillinger from './pages/Innstillinger.jsx';
+import Oppgaver from './pages/Oppgaver.jsx';
+import Kalender from './pages/Kalender.jsx';
 import TabBar from './components/TabBar.jsx';
 import Toast from './components/Toast.jsx';
 
@@ -61,21 +65,30 @@ function Innlogget({ route }) {
 
 function Skall({ route, email }) {
   const liste = useHandleliste();
+  const { rader: oppgaver } = useOppgaver();
   const [seksjon] = route;
   const antall = (liste.varer || []).filter((v) => !v.kjopt).length;
+  const idag = iDag();
+  const meg = email.toLowerCase();
+  const antallOppgaver = (oppgaver || []).filter((o) => !o.ferdig && o.frist && o.frist <= idag
+    && (!o.tildelt || o.tildelt.toLowerCase() === meg)).length;
+
+  useEffect(() => { fornyAbonnement(); }, []);
 
   let side;
-  let aktiv = seksjon || 'uke';
+  let aktiv = seksjon || 'kalender';
   if (seksjon === 'handle') side = <Handleliste liste={liste} />;
   else if (seksjon === 'tilbud') side = <Priser liste={liste} />;
-  else if (seksjon === 'middager') side = <Middager />;
+  else if (seksjon === 'middag' || seksjon === 'uke') { side = <Uke />; aktiv = 'uke'; }
+  else if (seksjon === 'middager') { side = <Middager />; aktiv = 'uke'; }
+  else if (seksjon === 'oppgaver') side = <Oppgaver email={email} />;
   else if (seksjon === 'innstillinger') side = <Innstillinger email={email} />;
-  else { side = <Uke />; aktiv = 'uke'; }
+  else { side = <Kalender email={email} />; aktiv = 'kalender'; }
 
   return (
     <div className="app">
       <div className="app-content">{side}</div>
-      <TabBar active={aktiv} antallHandle={antall} />
+      <TabBar active={aktiv} antallHandle={antall} antallOppgaver={antallOppgaver} />
       <Toast />
     </div>
   );

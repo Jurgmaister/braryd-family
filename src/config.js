@@ -1,5 +1,6 @@
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 export const isConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 // Navnet (slug) på serverfunksjonen i Supabase. Standard er «braryd».
 export const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/${import.meta.env.VITE_FUNCTION_NAME || 'braryd'}`;
@@ -24,3 +25,7 @@ export const BUTIKKER = [
   { kode: 'EUROPRIS_NO', navn: 'Europris', farge: '#283593' },
 ];
 export const butikk = (kode, reserve = '') => BUTIKKER.find((b) => b.kode === kode) || { kode, navn: reserve || kode, farge: '#6A716B' };
+
+// Farger for personer i kalender og oppgaver (i rekkefølge etter navn)
+export const PERSONFARGER = ['#3D6FB6', '#C8613F', '#8E5BB5', '#C99700', '#2A8C8C', '#B5487A', '#5B7F2A'];
+export const FAMILIEFARGE = '#2F5D50';

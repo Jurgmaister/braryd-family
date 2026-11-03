@@ -2,7 +2,9 @@
 
 Familiens app for middager, handleliste og ukens tilbud.
 
-- **Ukeplan** – middag per dag, med minne over hva vi har spist
+- **Kalender** – felles og per person, med bursdager og push-varsel
+- **Oppgaver** – hvem gjør hva, faste og engangs, med frist og varsel
+- **Middag** – ukeplan med minne over hva vi har spist
 - **Middager** – biblioteket vårt med oppskriftslenker og ingredienser
 - **Handleliste** – felles og live, med kategorier, lagrede lister og Siri/HomePod
 - **Priser** – dagens priser per kjede fra Kassalapp, matchet mot handlelisten

@@ -37,6 +37,7 @@ export default function Middager() {
 
   return (
     <main className="page">
+      <a className="lenkeknapp tilbake" href="#/middag"><Icon name="chevronL" size={18} /> Ukeplan</a>
       <Topbar tittel="Middager" under={middager ? `${middager.length} lagret` : ''}>
         <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({})} aria-label="Ny middag"><Icon name="plus" /></button>
       </Topbar>

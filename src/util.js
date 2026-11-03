@@ -145,3 +145,60 @@ export function tilbudFor(varenavn, alle) {
 export function initialer(navn) {
   return (navn || '?').split(/\s+/).map((d) => d[0]).join('').slice(0, 2).toUpperCase();
 }
+
+// ---------- Gjentakelser (samme regler som serverfunksjonen) ----------
+// Datoene en kalenderhendelse skjer innenfor [fra, til] (ISO-datoer)
+export function forekomster(h, fra, til) {
+  const start = h.dato;
+  const slutt = h.gjentar_til && h.gjentar_til < til ? h.gjentar_til : til;
+  if (!h.gjentakelse || h.gjentakelse === 'ingen') {
+    const sluttdato = h.sluttdato && h.sluttdato > start ? h.sluttdato : start;
+    return start <= til && sluttdato >= fra ? [start] : [];
+  }
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const ut = [];
+  for (let n = 0; n < 3000; n++) {
+    let d;
+    if (h.gjentakelse === 'ukentlig') d = isoDato(new Date(sy, sm - 1, sd + 7 * n));
+    else if (h.gjentakelse === 'annenhver_uke') d = isoDato(new Date(sy, sm - 1, sd + 14 * n));
+    else if (h.gjentakelse === 'maanedlig') {
+      const dim = new Date(sy, sm + n, 0).getDate();
+      d = isoDato(new Date(sy, sm - 1 + n, Math.min(sd, dim)));
+    } else {
+      const dim = new Date(sy + n, sm, 0).getDate();
+      d = isoDato(new Date(sy + n, sm - 1, Math.min(sd, dim)));
+    }
+    if (d > slutt) break;
+    if (d >= fra) ut.push(d);
+  }
+  return ut;
+}
+
+export const GJENTAKELSE_OPPGAVE = [
+  { id: 'ingen', navn: 'Engangs' },
+  { id: 'daglig', navn: 'Hver dag' },
+  { id: 'ukentlig', navn: 'Hver uke' },
+  { id: 'annenhver_uke', navn: 'Annenhver uke' },
+  { id: 'maanedlig', navn: 'Hver måned' },
+];
+export const GJENTAKELSE_HENDELSE = [
+  { id: 'ingen', navn: 'Gjentas ikke' },
+  { id: 'ukentlig', navn: 'Hver uke' },
+  { id: 'annenhver_uke', navn: 'Annenhver uke' },
+  { id: 'maanedlig', navn: 'Hver måned' },
+  { id: 'aarlig', navn: 'Hvert år' },
+];
+
+export function fristTekst(frist) {
+  if (!frist) return '';
+  const dager = Math.round((fraIso(frist) - fraIso(iDag())) / 86400000);
+  if (dager === 0) return 'i dag';
+  if (dager === 1) return 'i morgen';
+  if (dager === -1) return 'i går';
+  if (dager < -1) return `${-dager} dager over fristen`;
+  const d = fraIso(frist);
+  if (dager < 7) return UKEDAGER[d.getDay()];
+  return `${UKEDAGER[d.getDay()].slice(0, 3)} ${d.getDate()}. ${MND[d.getMonth()]}`;
+}
+
+export const klokke = (t) => (t ? String(t).slice(0, 5) : '');

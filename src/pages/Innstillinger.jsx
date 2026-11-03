@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { pushStottes, maaInstalleres, aktivtAbonnement, slaaPaaPush, slaaAvPush } from '../push.js';
+import { callFunction } from '../supabase.js';
 import { supabase } from '../supabase.js';
 import { FUNCTION_URL, BUTIKKER } from '../config.js';
 import { useMedlemmer, lastMedlemmerPaaNytt, useInnstillinger, lastInnstillingerPaaNytt } from '../data.js';
@@ -35,6 +37,7 @@ export default function Innstillinger({ email }) {
         <p className="muted liten">Familien: {medlemmer.map((m) => m.navn).join(', ')}</p>
       </section>
 
+      <Varsler />
       <Siri />
       <TilbudInnstillinger />
 
@@ -129,6 +132,49 @@ function TilbudInnstillinger() {
         ))}
       </div>
       <button type="button" className="btn btn-primary" onClick={lagre}>Lagre kjeder</button>
+    </section>
+  );
+}
+
+function Varsler() {
+  const [status, setStatus] = useState('sjekker');
+  const [jobber, setJobber] = useState(false);
+
+  async function sjekk() {
+    if (!pushStottes()) { setStatus(maaInstalleres() ? 'installer' : 'ikke-stottet'); return; }
+    if (maaInstalleres()) { setStatus('installer'); return; }
+    const sub = await aktivtAbonnement().catch(() => null);
+    setStatus(sub && Notification.permission === 'granted' ? 'paa' : Notification.permission === 'denied' ? 'blokkert' : 'av');
+  }
+  useEffect(() => { sjekk(); }, []);
+
+  async function gjor(fn, melding) {
+    setJobber(true);
+    try { await fn(); if (melding) toast(melding); } catch (e) { toast(e.message); } finally { setJobber(false); sjekk(); }
+  }
+
+  return (
+    <section className="card stack">
+      <h2 className="h2"><Icon name="bell" size={20} /> Varsler på denne telefonen</h2>
+      <p className="muted">Få push-varsel når du får en oppgave, når fristen går ut, før avtaler, på bursdager og når noen sender en melding.</p>
+      {status === 'installer' && (
+        <p className="infoboks">På iPhone må appen ligge på Hjem-skjermen for å få varsler: åpne siden i Safari → <b>Del</b> → <b>Legg til på Hjem-skjerm</b>, og åpne BraRyd derfra.</p>
+      )}
+      {status === 'ikke-stottet' && <p className="infoboks">Denne nettleseren støtter ikke varsler.</p>}
+      {status === 'blokkert' && <p className="infoboks">Varsler er blokkert. Slå dem på i telefonens innstillinger (Varslinger → BraRyd), og prøv igjen.</p>}
+      {(status === 'av' || status === 'blokkert') && (
+        <button type="button" className="btn btn-primary" disabled={jobber} onClick={() => gjor(slaaPaaPush, 'Varsler er slått på')}>Slå på varsler</button>
+      )}
+      {status === 'paa' && (
+        <>
+          <p className="ok-tekst">✔︎ Varsler er på</p>
+          <div className="knapperad">
+            <button type="button" className="btn btn-ghost btn-sm" disabled={jobber}
+              onClick={() => gjor(async () => { const r = await callFunction('push-test'); if (!r.sendt) throw new Error('Fikk ikke sendt. Slå varsler av og på igjen.'); }, 'Testvarsel sendt')}>Send testvarsel</button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={jobber} onClick={() => gjor(slaaAvPush, 'Varsler er slått av')}>Slå av</button>
+          </div>
+        </>
+      )}
     </section>
   );
 }

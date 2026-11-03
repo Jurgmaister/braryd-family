@@ -1,6 +1,6 @@
 # Oppsett av BraRyd familieplanlegger
 
-Første utgave: ukeplan for middager med minne over hva dere har spist, middagsbibliotek med oppskriftslenker og ingredienser, felles handleliste med kategorier (oppdateres live hos alle), lagrede lister, Siri/HomePod-snarveier og dagens priser per kjede fra Kassalapp.
+Ukeplan for middager med minne over hva dere har spist, middagsbibliotek med oppskriftslenker og ingredienser, felles handleliste med kategorier (oppdateres live hos alle), lagrede lister, Siri/HomePod-snarveier og dagens priser per kjede fra Kassalapp.
 
 Samme oppskrift som Alvøen-appen: Supabase (database) + GitHub Pages (nettsiden). Regn med ca. 40 minutter. Ingen programmering trengs.
 
@@ -131,3 +131,20 @@ Gjelder hvis du satte opp appen før priser kom inn:
 ## Lagre som (oppdatere lagrede lister)
 
 Kjør `supabase/lagrede_lister.sql` én gang i **SQL Editor → New query → Run**. Da husker appen for hele familien hvilken lagret liste dere jobber i. Uten den virker «lagre som» likevel, men hver telefon husker det for seg.
+
+---
+
+## Oppgaver, kalender og push-varsler
+
+1. **SQL Editor → New query**: lim inn hele `supabase/familie.sql` og **Run**.
+2. **Edge Functions → Secrets**: legg inn `VAPID_PUBLIC_KEY` og `VAPID_PRIVATE_KEY` fra nøkkelfilen (BraRyd-push-nokler-HEMMELIG.txt). Filen skal ikke i GitHub.
+3. **Edge Functions → braryd → Code**: erstatt koden med hele `supabase/functions/braryd/index.ts` og **Deploy**. «Verify JWT» skal fortsatt være av.
+4. På hver telefon: åpne BraRyd fra Hjem-skjermen → **Innstillinger → Varsler på denne telefonen → Slå på varsler** → **Send testvarsel**.
+
+Arbeidsflyten **Send varsler** på GitHub kaller funksjonen hvert kvarter. GitHub kan forsinke den med 5–20 minutter, så varsler kommer omtrent til tiden.
+
+**Oppgaver.** Gi en oppgave til en person eller «hvem som helst», med frist og gjentakelse (engangs, hver dag, hver uke, annenhver uke, hver måned). Når en fast oppgave krysses av, kommer den tilbake med ny frist. Den som får en oppgave av noen andre får push. Kl. 07 får den ansvarlige varsel om oppgaver med frist i dag, og kl. 08 dagen etter fristen kommer varsel hvis den ikke er gjort (oppgaver uten ansvarlig varsler alle).
+
+**Kalender.** Felles familiekalender og én per person, med filter øverst. Avtaler, treninger (gjerne ukentlig), bursdager (årlig, viser alder hvis fødselsår er lagt inn) og flerdagers hendelser. Push-varsel før start, eller for heldagshendelser og bursdager kl. 08 samme dag / kl. 18 dagen før / en uke før. Bursdager varsles til hele familien, personlige hendelser til den det gjelder.
+
+**Melding.** Bjella øverst sender en push-melding til hele familien eller én person.
