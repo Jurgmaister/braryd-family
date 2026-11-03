@@ -1,7 +1,8 @@
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 export const isConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-export const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/braryd`;
+// Navnet (slug) på serverfunksjonen i Supabase. Standard er «braryd».
+export const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/${import.meta.env.VITE_FUNCTION_NAME || 'braryd'}`;
 
 // Kjeder som kan velges for tilbud (navn slik de står i kundeavisene)
 export const ALLE_KJEDER = [

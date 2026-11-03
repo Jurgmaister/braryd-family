@@ -18,8 +18,10 @@ jobs:
           set -euo pipefail
           base=$(grep '^VITE_SUPABASE_URL=' .env.production | cut -d= -f2-)
           key=$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | cut -d= -f2-)
+          fn=$(grep '^VITE_FUNCTION_NAME=' .env.production | cut -d= -f2- || true)
+          fn=${fn:-braryd}
           for i in 1 2 3; do
-            if curl -sSf --max-time 140 -X POST "$base/functions/v1/braryd" \
+            if curl -sSf --max-time 140 -X POST "$base/functions/v1/$fn" \
                  -H "Content-Type: application/json" -H "apikey: $key" \
                  -d '{"action":"tilbud-sync"}' -o /tmp/svar.json; then
               cat /tmp/svar.json; exit 0

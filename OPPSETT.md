@@ -39,7 +39,8 @@ Glemt passord: **Authentication → Users** → trykk på personen → sett nytt
 1. **Edge Functions → Deploy a new function → Via Editor**
    - Navn: `braryd` (nøyaktig dette)
    - Slett eksempelkoden, lim inn hele `supabase/functions/braryd/index.ts` og trykk **Deploy**.
-2. Åpne funksjonen → **Details/Settings** og slå **av** «Enforce JWT verification». Lagre.
+2. Åpne funksjonen → **Details/Settings** og slå **av** «Verify JWT» / «Enforce JWT verification». Lagre.
+   - Merk: å endre navnet senere endrer ikke adressen. Har funksjonen fått en annen adresse (slug), legg den inn som `VITE_FUNCTION_NAME` i `.env.production`.
    - Funksjonen sjekker selv Siri-nøkkelen og om du er i familien.
 
 Ingen hemmeligheter trengs. Tilbudene hentes fra Tjek (samme kilde som Mattilbud og eTilbudsavis), som ikke krever nøkkel.
@@ -79,7 +80,7 @@ Hver person lager to snarveier på sin egen iPhone. Siri-nøkkelen og adressen f
 
 1. **Spør etter inndata** (Ask for Input) – type Tekst, spørsmål: «Hva skal på listen?»
 2. **Hent innhold fra URL** (Get Contents of URL)
-   - URL: adressen fra appen (slutter på `/functions/v1/braryd`)
+   - URL: adressen fra appen (slutter på `/functions/v1/` og navnet på funksjonen)
    - Trykk pila → **Metode: POST**, **Forespørselsinnhold: JSON**
    - Legg til tre tekstfelt:
      - `action` = `siri-legg-til`
