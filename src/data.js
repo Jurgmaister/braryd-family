@@ -111,6 +111,34 @@ const innstillingStore = lagStore(async () => {
 export const useInnstillinger = () => useStore(innstillingStore);
 export const lastInnstillingerPaaNytt = () => innstillingStore.last();
 
+// ---------- Lagrede handlelister ----------
+const listeStore = lagStore(async () => {
+  const { data, error } = await supabase.from('lagrede_lister').select('*').order('navn');
+  if (error) throw error;
+  return data;
+});
+export const useLagredeLister = () => useStore(listeStore);
+export const lastListerPaaNytt = () => listeStore.last();
+
+// Hvilken lagret liste handlelisten er hentet fra. Deles i familien via innstillinger;
+// hvis kolonnen mangler (lagrede_lister.sql ikke kjørt) huskes den bare på denne telefonen.
+let lokalAktiv = null;
+try { lokalAktiv = Number(localStorage.getItem('braryd.aktivListe')) || null; } catch { /* ignorer */ }
+export function aktivListeId(inn) {
+  return inn && 'aktiv_liste_id' in inn ? inn.aktiv_liste_id : lokalAktiv;
+}
+export async function settAktivListe(id) {
+  lokalAktiv = id || null;
+  try { if (id) localStorage.setItem('braryd.aktivListe', String(id)); else localStorage.removeItem('braryd.aktivListe'); } catch { /* ignorer */ }
+  const inn = innstillingStore.get();
+  if (inn && 'aktiv_liste_id' in inn) {
+    innstillingStore.set({ ...inn, aktiv_liste_id: id || null });
+    await supabase.from('innstillinger').update({ aktiv_liste_id: id || null }).eq('id', 1);
+  } else if (inn) {
+    innstillingStore.set({ ...inn });
+  }
+}
+
 // ---------- Priser (Kassalapp) ----------
 // Mellomlager i appen: søkeord → { sok, treff, alle, hentet }
 const prisCache = new Map();

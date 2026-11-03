@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
-import { useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer } from '../data.js';
+import {
+  useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer,
+  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe,
+} from '../data.js';
 import { butikk } from '../config.js';
 import { tolkVarer, normaliser, kr, initialer } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
@@ -35,7 +38,11 @@ export default function Handleliste({ liste }) {
   }, [aktive, kategorier]);
 
   const { pris } = usePriser(aktive.map((v) => v.navn));
-  const butikker = useInnstillinger()?.butikker;
+  const inn = useInnstillinger();
+  const butikker = inn?.butikker;
+  const lagrede = useLagredeLister();
+  const aktivId = aktivListeId(inn);
+  const aktivListe = (lagrede || []).find((l) => l.id === aktivId) || null;
   const prisFor = (v) => treffI(pris(v.navn), butikker);
 
   async function leggTil(e) {
@@ -64,14 +71,24 @@ export default function Handleliste({ liste }) {
     setVarer((l) => l.filter((x) => !x.kjopt));
     const { error } = await supabase.from('handleliste').delete().in('id', ids);
     if (error) toast(error.message);
+    if (!aktive.length && aktivId) settAktivListe(null); // ferdig handlet: ikke lenger i en lagret liste
   }
 
   return (
     <main className="page">
       <Topbar tittel="Handleliste" under={varer ? (aktive.length ? `${aktive.length} ${aktive.length === 1 ? 'vare' : 'varer'}` : 'Alt er handlet') : ''}>
         <button type="button" className="ikonknapp" onClick={() => setListerApen(true)} aria-label="Lagrede lister"><Icon name="list" /></button>
-        <button type="button" className="ikonknapp" onClick={() => setLagreApen(true)} aria-label="Lagre listen" disabled={!aktive.length}><Icon name="save" /></button>
+        <button type="button" className="ikonknapp" onClick={() => setLagreApen(true)} aria-label="Lagre listen" disabled={!(varer || []).length}><Icon name="save" /></button>
       </Topbar>
+
+      {aktivListe && (
+        <div className="aktivliste">
+          <Icon name="list" size={16} />
+          <span className="vokse">Fra lagret liste: <b>{aktivListe.navn}</b></span>
+          <button type="button" className="lenkeknapp" onClick={() => setLagreApen(true)}>Lagre endringer</button>
+          <button type="button" className="ikonknapp ikonknapp-liten-graa" onClick={() => settAktivListe(null)} aria-label="Ikke koble til listen"><Icon name="close" size={16} /></button>
+        </div>
+      )}
 
       <form className="leggtil" onSubmit={leggTil}>
         <input value={tekst} onChange={(e) => setTekst(e.target.value)} placeholder="Legg til vare (flere: skill med ;)"
@@ -119,8 +136,8 @@ export default function Handleliste({ liste }) {
 
       <VareSkjema vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []}
         onClose={() => setRedigerer(null)} setVarer={setVarer} medlemmer={medlemmer} />
-      <LagreListe open={lagreApen} onClose={() => setLagreApen(false)} varer={aktive} />
-      <LagredeLister open={listerApen} onClose={() => setListerApen(false)} aktive={aktive} setVarer={setVarer} />
+      <LagreListe open={lagreApen} onClose={() => setLagreApen(false)} varer={varer || []} lagrede={lagrede || []} aktivId={aktivListe?.id || null} />
+      <LagredeLister open={listerApen} onClose={() => setListerApen(false)} aktive={aktive} setVarer={setVarer} lagrede={lagrede} />
     </main>
   );
 }
@@ -229,64 +246,108 @@ function VareSkjema({ vare, kategorier, tilbud, onClose, setVarer, medlemmer }) 
   );
 }
 
-function LagreListe({ open, onClose, varer }) {
+const tilLagret = (varer) => varer.map((v) => ({ navn: v.navn, antall: v.antall || '', kategori: v.kategori }));
+
+function LagreListe({ open, onClose, varer, lagrede, aktivId }) {
+  const [mal, setMal] = useState('ny');
   const [navn, setNavn] = useState('');
-  useEffect(() => { if (open) setNavn(''); }, [open]);
+  const [jobber, setJobber] = useState(false);
+  useEffect(() => {
+    if (open) { setMal(aktivId ? String(aktivId) : 'ny'); setNavn(''); }
+  }, [open, aktivId]);
+
+  const eksisterende = mal === 'ny' ? null : lagrede.find((l) => String(l.id) === mal);
+  const iKurven = varer.filter((v) => v.kjopt).length;
+
   async function lagre(e) {
     e.preventDefault();
-    if (!navn.trim()) return;
-    const { error } = await supabase.from('lagrede_lister').insert({
-      navn: navn.trim(), varer: varer.map((v) => ({ navn: v.navn, antall: v.antall, kategori: v.kategori })),
-    });
-    if (error) { toast(error.message); return; }
-    toast(`«${navn.trim()}» er lagret`);
-    onClose();
+    if (!varer.length) return;
+    setJobber(true);
+    try {
+      if (eksisterende) {
+        const { error } = await supabase.from('lagrede_lister')
+          .update({ varer: tilLagret(varer), oppdatert: new Date().toISOString() }).eq('id', eksisterende.id);
+        if (error) {
+          // oppdatert-kolonnen finnes ikke før lagrede_lister.sql er kjørt
+          const { error: e2 } = await supabase.from('lagrede_lister').update({ varer: tilLagret(varer) }).eq('id', eksisterende.id);
+          if (e2) throw e2;
+        }
+        await settAktivListe(eksisterende.id);
+        toast(`«${eksisterende.navn}» er oppdatert`);
+      } else {
+        if (!navn.trim()) { toast('Gi listen et navn'); setJobber(false); return; }
+        if (lagrede.some((l) => l.navn.toLowerCase() === navn.trim().toLowerCase())) {
+          toast('Det finnes allerede en liste med det navnet – velg den i menyen for å oppdatere');
+          setJobber(false); return;
+        }
+        const { data, error } = await supabase.from('lagrede_lister').insert({ navn: navn.trim(), varer: tilLagret(varer) }).select().single();
+        if (error) throw error;
+        await settAktivListe(data.id);
+        toast(`«${navn.trim()}» er lagret`);
+      }
+      await lastListerPaaNytt();
+      onClose();
+    } catch (err) { toast(err.message); } finally { setJobber(false); }
   }
+
   return (
     <Sheet open={open} onClose={onClose} tittel="Lagre listen">
       <form className="stack" onSubmit={lagre}>
-        <p className="muted">Lagrer de {varer.length} varene som står på listen nå, så dere kan hente dem fram igjen senere.</p>
-        <label className="field">Navn på listen
-          <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} placeholder="F.eks. «Hyttetur» eller «Fast ukehandel»" />
+        <label className="field">Lagre som
+          <select value={mal} onChange={(e) => setMal(e.target.value)}>
+            <option value="ny">Ny liste …</option>
+            {lagrede.map((l) => <option key={l.id} value={String(l.id)}>Oppdater «{l.navn}»</option>)}
+          </select>
         </label>
-        <button type="submit" className="btn btn-primary btn-lg">Lagre</button>
+        {!eksisterende && (
+          <label className="field">Navn på ny liste
+            <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} placeholder="F.eks. «Hyttetur» eller «Fast ukehandel»" />
+          </label>
+        )}
+        <p className="muted liten">
+          {eksisterende
+            ? `Erstatter innholdet i «${eksisterende.navn}» (${(eksisterende.varer || []).length} varer) med de ${varer.length} varene på listen nå.`
+            : `Lagrer de ${varer.length} varene på listen nå.`}
+          {iKurven > 0 ? ` ${iKurven} av dem ligger i kurven og er tatt med.` : ''}
+        </p>
+        <button type="submit" className="btn btn-primary btn-lg" disabled={jobber || !varer.length}>
+          {eksisterende ? `Oppdater «${eksisterende.navn}»` : 'Lagre ny liste'}
+        </button>
       </form>
     </Sheet>
   );
 }
 
-function LagredeLister({ open, onClose, aktive, setVarer }) {
-  const [lister, setLister] = useState(null);
-  useEffect(() => {
-    if (!open) return;
-    supabase.from('lagrede_lister').select('*').order('opprettet', { ascending: false })
-      .then(({ data, error }) => { if (error) toast(error.message); else setLister(data); });
-  }, [open]);
+function LagredeLister({ open, onClose, aktive, setVarer, lagrede }) {
+  useEffect(() => { if (open) lastListerPaaNytt().catch((e) => toast(e.message)); }, [open]);
 
   async function bruk(l) {
     const finnes = new Set(aktive.map((v) => normaliser(v.navn)));
     const nye = (l.varer || []).filter((v) => !finnes.has(normaliser(v.navn)));
-    if (!nye.length) { toast('Alt står allerede på listen'); return; }
     try {
-      const rader = await leggTilVarer(nye, 'lagret');
-      setVarer((x) => [...(x || []), ...rader.filter((r) => !(x || []).some((y) => y.id === r.id))]);
-      toast(`La til ${nye.length} varer fra «${l.navn}»`);
+      if (nye.length) {
+        const rader = await leggTilVarer(nye, 'lagret');
+        setVarer((x) => [...(x || []), ...rader.filter((r) => !(x || []).some((y) => y.id === r.id))]);
+      }
+      await settAktivListe(l.id);
+      toast(nye.length ? `La til ${nye.length} varer fra «${l.navn}»` : `Alt fra «${l.navn}» står allerede på listen`);
       onClose();
     } catch (e) { toast(e.message); }
   }
 
   async function slett(l) {
     if (!window.confirm(`Slette den lagrede listen «${l.navn}»?`)) return;
-    await supabase.from('lagrede_lister').delete().eq('id', l.id);
-    setLister((x) => x.filter((y) => y.id !== l.id));
+    const { error } = await supabase.from('lagrede_lister').delete().eq('id', l.id);
+    if (error) { toast(error.message); return; }
+    lastListerPaaNytt();
   }
 
   return (
     <Sheet open={open} onClose={onClose} tittel="Lagrede lister">
-      {lister == null && <div className="spinner" />}
-      {lister && !lister.length && <p className="muted">Ingen lagrede lister ennå. Trykk på lagre-knappen øverst for å lagre listen dere har nå.</p>}
+      {lagrede == null && <div className="spinner" />}
+      {lagrede && !lagrede.length && <p className="muted">Ingen lagrede lister ennå. Trykk på lagre-knappen øverst for å lagre listen dere har nå.</p>}
       <ul className="lagrede">
-        {(lister || []).map((l) => (
+        {(lagrede || []).map((l) => (
           <li key={l.id} className="card innfelt">
             <div className="vokse">
               <p className="lagret-navn">{l.navn}</p>
@@ -294,7 +355,7 @@ function LagredeLister({ open, onClose, aktive, setVarer }) {
             </div>
             <div className="knapperad">
               <button type="button" className="ikonknapp" onClick={() => slett(l)} aria-label="Slett"><Icon name="trash" size={18} /></button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => bruk(l)}>Legg til</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => bruk(l)}>Bruk</button>
             </div>
           </li>
         ))}

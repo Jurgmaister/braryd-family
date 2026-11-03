@@ -305,3 +305,6 @@ img { max-width: 100%; }
 .prisbit-best { color: var(--pine); background: var(--pine-soft); }
 .prisbit-fall { color: var(--clay); background: var(--clay-soft); }
 .prisbit-fall-tekst { font-weight: 700; color: var(--clay); }
+.aktivliste { display: flex; align-items: center; gap: 8px; background: var(--pine-soft); color: var(--pine); border-radius: 12px; padding: 6px 6px 6px 12px; font-size: 14px; }
+.aktivliste .lenkeknapp { font-size: 14px; white-space: nowrap; }
+.ikonknapp-liten-graa { width: 30px; height: 30px; color: var(--pine); }

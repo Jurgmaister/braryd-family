@@ -312,6 +312,11 @@ create table if not exists public.innstillinger (
 );
 insert into public.innstillinger (id) values (1) on conflict do nothing;
 
+-- Lagret liste dere jobber i nå (lagre-knappen oppdaterer den)
+alter table public.lagrede_lister add column if not exists oppdatert timestamptz not null default now();
+alter table public.innstillinger add column if not exists aktiv_liste_id bigint
+  references public.lagrede_lister(id) on delete set null;
+
 -- ---------- Tilgang (RLS): bare familiemedlemmer ----------
 alter table public.medlemmer enable row level security;
 alter table public.siri_nokler enable row level security;
