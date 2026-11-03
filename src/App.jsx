@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isConfigured } from './config.js';
 import { supabase } from './supabase.js';
-import { useSession, useHandleliste, useOppgaver, settMinEpost } from './data.js';
+import { useSession, useHandleliste, useOppgaver, settMinEpost, tildelteFor } from './data.js';
 import { fornyAbonnement } from './push.js';
 import { iDag } from './util.js';
 import Login from './pages/Login.jsx';
@@ -73,7 +73,7 @@ function Skall({ route, email }) {
   const idag = iDag();
   const meg = email.toLowerCase();
   const antallOppgaver = (oppgaver || []).filter((o) => !o.ferdig && !o.pauset && o.frist && o.frist <= idag
-    && (!o.tildelt || o.tildelt.toLowerCase() === meg)).length;
+    && (!tildelteFor(o).length || tildelteFor(o).includes(meg))).length;
 
   useEffect(() => { fornyAbonnement(); }, []);
 

@@ -172,3 +172,11 @@ Kjør `supabase/admin.sql` i **SQL Editor → New query → Run** (etter `famili
 - **Nytt passord:** sett et nytt passord for en person (eller trykk «Lag et»). Har personen ikke innlogging ennå, blir den laget.
 
 Nye familiemedlemmer legges fortsatt inn i `medlemmer`-tabellen (steg 1). De får alle tilganger til admin skrur av.
+
+---
+
+## Flere personer på én oppgave
+
+Kjør `supabase/familie3.sql` i **SQL Editor → New query → Run** (etter `admin.sql`), og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
+
+Under «Hvem» kan du nå velge flere. Alle får varsel når de får oppgaven, og alle får påminnelsene. Når én av dem krysser av, er oppgaven gjort for alle (og faste oppgaver kommer tilbake til de samme personene). Eksisterende oppgaver beholder personen de hadde.

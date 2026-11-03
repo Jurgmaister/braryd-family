@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase, callFunction } from '../supabase.js';
-import { useOppgaver, useMedlemmer, navnFor, fargeFor, lagreOppgave, useRett } from '../data.js';
+import { useOppgaver, useMedlemmer, navnFor, fargeFor, lagreOppgave, useRett, tildelteFor, harOppgaven } from '../data.js';
 import KunInnsyn from '../components/KunInnsyn.jsx';
 import {
   iDag, isoDato, fraIso, leggTilDager, fristTekst, GJENTAKELSE_OPPGAVE, initialer, relativDato,
@@ -21,16 +21,16 @@ export default function Oppgaver({ email }) {
   const [visFerdige, setVisFerdige] = useState(false);
   const [visPause, setVisPause] = useState(false);
   const kan = useRett('oppgaver');
-  const kanKrysse = (o) => kan || (o.tildelt || '').toLowerCase() === meg;
+  const kanKrysse = (o) => kan || harOppgaven(o, meg);
   const meg = email.toLowerCase();
   const idag = iDag();
   const ukeslutt = isoDato(leggTilDager(fraIso(idag), 7 - ((fraIso(idag).getDay() + 6) % 7) - 1));
 
   const synlige = (rader || []).filter((o) => {
     if (filter === 'alle') return true;
-    if (filter === 'mine') return (o.tildelt || '').toLowerCase() === meg;
-    if (filter === 'ingen') return !o.tildelt;
-    return (o.tildelt || '').toLowerCase() === filter;
+    if (filter === 'mine') return harOppgaven(o, meg);
+    if (filter === 'ingen') return !tildelteFor(o).length;
+    return harOppgaven(o, filter);
   });
   const aapne = synlige.filter((o) => !o.ferdig && !o.pauset);
   const pausede = synlige.filter((o) => !o.ferdig && o.pauset);
@@ -51,7 +51,7 @@ export default function Oppgaver({ email }) {
     ].filter(([, , l]) => l.length);
   }, [aapne, idag, ukeslutt]);
 
-  const mineAntall = (rader || []).filter((o) => !o.ferdig && !o.pauset && (o.tildelt || '').toLowerCase() === meg).length;
+  const mineAntall = (rader || []).filter((o) => !o.ferdig && !o.pauset && harOppgaven(o, meg)).length;
 
   async function fullfor(o) {
     setRader((l) => l.map((x) => (x.id === o.id ? { ...x, ferdig: true, ferdig_av: meg, ferdig_tid: new Date().toISOString() } : x)));
@@ -146,7 +146,7 @@ export default function Oppgaver({ email }) {
 
 function OppgaveRad({ o, medlemmer, idag, kanKrysse = true, onFullfor, onApne }) {
   const over = o.frist && o.frist < idag;
-  const hvem = o.tildelt ? navnFor(medlemmer, o.tildelt) : '';
+  const personer = tildelteFor(o);
   return (
     <li className="vare">
       <button type="button" className="hake" disabled={!kanKrysse} onClick={onFullfor} aria-label={`Ferdig: ${o.tittel}`} />
@@ -159,9 +159,14 @@ function OppgaveRad({ o, medlemmer, idag, kanKrysse = true, onFullfor, onApne })
           {o.varsel === false && !o.pauset && <span className="muted liten" title="Ingen push-påminnelse"><Icon name="bellOff" size={12} /></span>}
         </span>
       </button>
-      {hvem
-        ? <span className="hvem" style={{ background: fargeFor(medlemmer, o.tildelt), color: '#fff' }} title={hvem}>{initialer(hvem)}</span>
-        : <span className="hvem hvem-tom" title="Hvem som helst">?</span>}
+      {personer.length ? (
+        <span className="hvem-stabel" title={personer.map((e) => navnFor(medlemmer, e)).join(', ')}>
+          {personer.slice(0, 3).map((e) => (
+            <span key={e} className="hvem" style={{ background: fargeFor(medlemmer, e), color: '#fff' }}>{initialer(navnFor(medlemmer, e))}</span>
+          ))}
+          {personer.length > 3 && <span className="hvem hvem-tom">+{personer.length - 3}</span>}
+        </span>
+      ) : <span className="hvem hvem-tom" title="Hvem som helst">?</span>}
     </li>
   );
 }
@@ -173,7 +178,7 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, kan, onClose }) {
   const [pauseTil, setPauseTil] = useState('');
   useEffect(() => {
     setF(oppgave ? {
-      gjentakelse: 'ingen', tildelt: null, varsel: true, ...oppgave,
+      gjentakelse: 'ingen', varsel: true, ...oppgave, tildelte: tildelteFor(oppgave),
       frist: oppgave.frist || '', dager: oppgave.dager || [], varsel_tid: String(oppgave.varsel_tid || '07:00').slice(0, 5),
     } : {});
     setPauseValg(false);
@@ -195,11 +200,12 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, kan, onClose }) {
         rad.frist = forsteUkedag(rad.dager, rad.frist && rad.frist > iDag() ? rad.frist : iDag());
       }
       const lagret = await lagreOppgave(rad);
-      const nyAnsvarlig = lagret.tildelt && lagret.tildelt.toLowerCase() !== meg
-        && (ny || (oppgave.tildelt || '').toLowerCase() !== lagret.tildelt.toLowerCase());
-      if (nyAnsvarlig) {
-        const svar = await callFunction('oppgave-tildelt', { id: lagret.id }).catch(() => null);
-        toast(svar?.sendt ? `Lagret – ${navnFor(medlemmer, lagret.tildelt)} har fått varsel` : 'Lagret');
+      // Varsle bare dem som er lagt til nå (ikke meg selv)
+      const foer = ny ? [] : tildelteFor(oppgave);
+      const nye = tildelteFor(lagret).filter((e) => !foer.includes(e) && e !== meg);
+      if (nye.length) {
+        const svar = await callFunction('oppgave-tildelt', { id: lagret.id, nye }).catch(() => null);
+        toast(svar?.sendt ? `Lagret – ${nye.map((e) => navnFor(medlemmer, e)).join(' og ')} har fått varsel` : 'Lagret');
       } else toast('Lagret');
       onClose();
     } catch (e) { toast(e.message); } finally { setJobber(false); }
@@ -240,14 +246,19 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, kan, onClose }) {
         <div>
           <p className="feltnavn">Hvem</p>
           <div className="chips">
-            <button type="button" className={!f.tildelt ? 'chip chip-on' : 'chip'} onClick={() => setF({ ...f, tildelt: null })}>Hvem som helst</button>
-            {medlemmer.map((m) => (
-              <button key={m.email} type="button" className={(f.tildelt || '').toLowerCase() === m.email.toLowerCase() ? 'chip chip-on' : 'chip'}
-                onClick={() => setF({ ...f, tildelt: m.email })}>
-                <span className="prikk" style={{ background: fargeFor(medlemmer, m.email) }} /> {m.email.toLowerCase() === meg ? `${m.navn} (meg)` : m.navn}
+            <button type="button" className={!(f.tildelte || []).length ? 'chip chip-on' : 'chip'} onClick={() => setF({ ...f, tildelte: [] })}>Hvem som helst</button>
+            {medlemmer.map((m) => {
+              const e = m.email.toLowerCase();
+              const valgt = (f.tildelte || []).includes(e);
+              return (
+              <button key={m.email} type="button" className={valgt ? 'chip chip-on' : 'chip'} aria-pressed={valgt}
+                onClick={() => setF({ ...f, tildelte: valgt ? f.tildelte.filter((x) => x !== e) : [...(f.tildelte || []), e] })}>
+                <span className="prikk" style={{ background: fargeFor(medlemmer, m.email) }} /> {e === meg ? `${m.navn} (meg)` : m.navn}
               </button>
-            ))}
+              );
+            })}
           </div>
+          {(f.tildelte || []).length > 1 && <p className="muted liten" style={{ marginTop: 6 }}>Alle {f.tildelte.length} får varsel. Når én krysser av, er oppgaven gjort for alle.</p>}
         </div>
         <div>
           <p className="feltnavn">Frist</p>
@@ -298,7 +309,7 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, kan, onClose }) {
                 <input type="time" className="tidfelt" value={f.varsel_tid || '07:00'} onChange={(e) => setF({ ...f, varsel_tid: e.target.value })} />
               </div>
               <p className="muted liten">
-                {f.tildelt ? `${f.tildelt.toLowerCase() === meg ? 'Du' : navnFor(medlemmer, f.tildelt)} får` : 'Hele familien får'} varsel på fristdagen, og igjen dagen etter hvis den ikke er gjort.
+                {(f.tildelte || []).length ? `${f.tildelte.map((e) => (e === meg ? 'du' : navnFor(medlemmer, e))).join(', ').replace(/, ([^,]*)$/, ' og $1').replace(/^./, (c) => c.toUpperCase())} får` : 'Hele familien får'} varsel på fristdagen, og igjen dagen etter hvis den ikke er gjort.
                 {!f.frist && f.gjentakelse === 'ingen' ? ' Krever en frist.' : ''}
               </p>
             </>

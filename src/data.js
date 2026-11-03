@@ -353,10 +353,16 @@ async function lagreRad(tabell, id, rad) {
   throw new Error('Kunne ikke lagre');
 }
 
+// Alle som har en oppgave (eldre oppgaver har bare «tildelt»)
+export const tildelteFor = (o) => ((o?.tildelte?.length ? o.tildelte : o?.tildelt ? [o.tildelt] : []).map((e) => e.toLowerCase()));
+export const harOppgaven = (o, email) => tildelteFor(o).includes((email || '').toLowerCase());
+
 export async function lagreOppgave(o) {
   const ukedager = o.gjentakelse === 'ukedager';
+  const personer = [...new Set((o.tildelte || []).map((e) => e.toLowerCase()))];
   return lagreRad('oppgaver', o.id, {
-    tittel: o.tittel.trim(), notat: o.notat || '', tildelt: o.tildelt || null,
+    tittel: o.tittel.trim(), notat: o.notat || '',
+    tildelte: personer.length ? personer : null, tildelt: personer[0] || null,
     frist: o.frist || null, gjentakelse: o.gjentakelse || 'ingen',
     dager: ukedager ? [...(o.dager || [])].sort() : null,
     varsel: o.varsel !== false, varsel_tid: o.varsel_tid || '07:00',

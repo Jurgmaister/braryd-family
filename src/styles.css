@@ -394,3 +394,6 @@ fieldset.innsyn .chip:not(.chip-on), fieldset.innsyn .ukedag:not(.ukedag-on) { o
 .bryter-paa span { transform: translateX(20px); }
 .bryter:disabled { opacity: .6; }
 .passordvisning { font-size: 22px; font-weight: 700; letter-spacing: .04em; background: var(--ground); border-radius: 12px; padding: 14px; text-align: center; }
+
+.hvem-stabel { display: inline-flex; flex-shrink: 0; }
+.hvem-stabel .hvem + .hvem { margin-left: -8px; box-shadow: 0 0 0 2px var(--card); }

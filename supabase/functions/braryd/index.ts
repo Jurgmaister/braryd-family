@@ -12,7 +12,7 @@
 //   push-avslutt   – fjerner et push-abonnement.
 //   push-test      – sender et testvarsel til egne enheter.
 //   send-melding   – push-melding til hele familien eller én person {til, tittel, tekst}.
-//   oppgave-tildelt– varsler den som har fått en oppgave {id}.
+//   oppgave-tildelt– varsler dem som har fått en oppgave {id, nye?: [e-post]} (nye = bare de som er lagt til nå).
 //   admin-passord  – admin setter nytt passord for et familiemedlem {email, passord}. Kun admin.
 //   varsle         – automatiske varsler: oppgaver med frist i dag / over fristen, kalenderhendelser
 //                    og bursdager. Kalles hvert kvarter av GitHub Actions. Åpen, men sender aldri dobbelt.
@@ -428,6 +428,10 @@ async function navnPaa(email: string | null) {
   return data?.navn || email.split("@")[0];
 }
 
+// Alle som har en oppgave (flere personer mulig; eldre oppgaver har bare «tildelt»)
+const tildelteFor = (t: any): string[] =>
+  (Array.isArray(t.tildelte) && t.tildelte.length ? t.tildelte : t.tildelt ? [t.tildelt] : []).map((e: string) => e.toLowerCase());
+
 // ---------- Norsk tid ----------
 const OSLO = "Europe/Oslo";
 function osloDeler(t: number) {
@@ -506,9 +510,10 @@ async function varsle() {
     if (t.varsel === false || t.pauset) continue;           // påminnelse av, eller på pause
     const [vt, vm] = String(t.varsel_tid || "07:00").split(":").map(Number);
     if (naaMin < vt * 60 + vm) continue;                     // ikke klokkeslettet ennå i dag
-    const til = t.tildelt ? [t.tildelt] : null;
+    const personer = tildelteFor(t);
+    const til = personer.length ? personer : null;
     if (t.frist === idag && await forsteGang(`oppgave-idag:${t.id}`)) {
-      await pushTil(til, { title: `I dag: ${t.tittel}`, body: t.tildelt ? "Påminnelse – frist i dag." : "Frist i dag – hvem tar den?", url: "#/oppgaver", tag: `oppgave-${t.id}` });
+      await pushTil(til, { title: `I dag: ${t.tittel}`, body: !personer.length ? "Frist i dag – hvem tar den?" : personer.length > 1 ? "Påminnelse – frist i dag. Dere er flere på denne." : "Påminnelse – frist i dag.", url: "#/oppgaver", tag: `oppgave-${t.id}` });
       sendt.push(`idag ${t.tittel}`);
     }
     if (t.frist < idag && await forsteGang(`oppgave-forfalt:${t.id}`)) {
@@ -630,13 +635,18 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
     if (action === "oppgave-tildelt") {
-      const { data: t } = await admin.from("oppgaver").select("tittel, tildelt, frist").eq("id", Number(p("id"))).maybeSingle();
-      if (!t?.tildelt || t.tildelt.toLowerCase() === meg) return json({ ok: true, sendt: 0 });
+      const { data: t } = await admin.from("oppgaver").select("*").eq("id", Number(p("id"))).maybeSingle();
+      if (!t) return json({ ok: true, sendt: 0 });
+      const alle = tildelteFor(t);
+      const nye = Array.isArray(body.nye) ? body.nye.map((e: string) => String(e).toLowerCase()) : alle;
+      const mottakere = alle.filter((e) => nye.includes(e) && e !== meg);
+      if (!mottakere.length) return json({ ok: true, sendt: 0 });
       const fra = await navnPaa(meg);
-      const n = await pushTil([t.tildelt], {
-        title: `Ny oppgave: ${t.tittel}`, body: `Fra ${fra}${t.frist ? ` · frist ${pentDato(t.frist)}` : ""}`, url: "#/oppgaver",
+      const andre = alle.length > 1 ? ` · sammen med ${alle.length - 1} ${alle.length === 2 ? "annen" : "andre"}` : "";
+      const n = await pushTil(mottakere, {
+        title: `Ny oppgave: ${t.tittel}`, body: `Fra ${fra}${t.frist ? ` · frist ${pentDato(t.frist)}` : ""}${andre}`, url: "#/oppgaver",
       });
-      return json({ ok: true, sendt: n });
+      return json({ ok: true, sendt: n, mottakere: mottakere.length });
     }
     return json({ error: "Ukjent handling" }, 400);
   } catch (e) {

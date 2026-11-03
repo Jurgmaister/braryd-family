@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
-import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor, useRett } from '../data.js';
+import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor, useRett, tildelteFor } from '../data.js';
 import KunInnsyn from '../components/KunInnsyn.jsx';
 import {
   UKEDAGER, MND, isoDato, iDag, fraIso, mandagI, leggTilDager, forekomster, klokke, GJENTAKELSE_HENDELSE,
@@ -68,7 +68,7 @@ export default function Kalender({ email }) {
 
   const dagensHendelser = utvid(filtrert, valgt, valgt);
   const dagensOppgaver = (oppgaver || []).filter((o) => !o.ferdig && o.frist === valgt
-    && (filter === 'alle' || filter === 'familie' || (o.tildelt || '').toLowerCase() === filter));
+    && (filter === 'alle' || filter === 'familie' || tildelteFor(o).includes(filter)));
   const kommende = utvid(filtrert, leggTil(idag, 1), leggTil(idag, 14)).filter((h) => h.forekomst > valgt || valgt < idag).slice(0, 6);
 
   const flytt = (n) => setMaaned(new Date(maaned.getFullYear(), maaned.getMonth() + n, 1));
