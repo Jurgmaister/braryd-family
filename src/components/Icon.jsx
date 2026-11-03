@@ -27,6 +27,7 @@ const PATHS = {
   bellOff: <><path d="M8.7 3.6A6 6 0 0 1 18 8c0 3.3.7 5.5 1.5 6.9M17 17H3s3-2 3-9c0-.6.1-1.1.2-1.6" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><path d="m2 2 20 20" /></>,
   send: <><path d="m22 2-7 20-4-9-9-4z" /><path d="M22 2 11 13" /></>,
   tasks: <><rect x="3" y="4" width="18" height="17" rx="2" /><path d="m8 12 2.5 2.5L16 9" /></>,
+  lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
 };
 

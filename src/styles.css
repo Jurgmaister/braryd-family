@@ -367,3 +367,30 @@ img { max-width: 100%; }
 .pauseliste .vare { opacity: .7; }
 .lenkeknapp { display: inline-flex; align-items: center; gap: 4px; }
 .inputrad > input.tidfelt { width: auto; flex: 0 0 auto; min-width: 120px; }
+
+/* ---------- Kalender: I dag ---------- */
+.kal-maaned { font-weight: 700; font-size: 16px; }
+.idagknapp { border: 1px solid var(--border); background: var(--card); color: var(--ink); border-radius: 999px; padding: 0 14px; height: 38px; font-weight: 700; font-size: 14px; cursor: pointer; align-self: center; }
+.idagknapp-aktiv { background: var(--butter); border-color: var(--butter); box-shadow: 0 2px 8px rgba(243, 201, 105, .5); }
+
+/* ---------- Kun innsyn ---------- */
+fieldset.innsyn { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.innsyn input, fieldset.innsyn textarea, fieldset.innsyn select { background: var(--ground); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); }
+fieldset.innsyn .chip:not(.chip-on), fieldset.innsyn .ukedag:not(.ukedag-on) { opacity: .55; }
+.innsyn-merke { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 10px; }
+.innsyn-banner { background: var(--sunk); border-radius: 12px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
+.hake:disabled { cursor: default; opacity: .45; }
+
+/* ---------- Admin ---------- */
+.admin-topp { display: flex; align-items: center; gap: 12px; }
+.hvem.stor { width: 40px; height: 40px; font-size: 14px; }
+.bryterliste { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.bryterliste li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.bryter-tekst { font-size: 12px; font-weight: 600; color: var(--pine); }
+.bryter-tekst.av { color: var(--muted); }
+.bryter { width: 50px; height: 30px; border-radius: 15px; border: 0; background: #D6D0C4; position: relative; cursor: pointer; flex-shrink: 0; transition: background .15s; }
+.bryter span { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.bryter-paa { background: var(--pine); }
+.bryter-paa span { transform: translateX(20px); }
+.bryter:disabled { opacity: .6; }
+.passordvisning { font-size: 22px; font-weight: 700; letter-spacing: .04em; background: var(--ground); border-radius: 12px; padding: 14px; text-align: center; }

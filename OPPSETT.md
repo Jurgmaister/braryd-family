@@ -159,3 +159,16 @@ Kjør `supabase/familie2.sql` i **SQL Editor → New query → Run**, og oppdate
 - **Push-påminnelse:** slå av/på per oppgave og velg klokkeslett. Varsel kommer på fristdagen, og igjen dagen etter hvis den ikke er gjort.
 - **Pause:** åpne oppgaven → «Sett på pause», eventuelt til en dato. Oppgaven flyttes til «På pause» og sender ingen varsler. Starter den igjen (selv eller på datoen), flyttes en passert frist til neste gang.
 - **Flere varsler i kalenderen:** inntil tre push-varsler per hendelse. Bursdager får som standard samme dag kl. 08, dagen før kl. 18 og en uke før kl. 08.
+
+---
+
+## Admin og tilganger
+
+Kjør `supabase/admin.sql` i **SQL Editor → New query → Run** (etter `familie2.sql`), og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
+
+`admin.sql` gjør `jorgen.rydheim@gmail.com` til admin. Admin finner **Admin** under **Innstillinger**:
+
+- **Tilganger per person:** sende push-meldinger, endre oppgaver, kalender, middager og handleliste. Av = kun innsyn i den delen. Tilgangen sjekkes i databasen, så den gjelder uansett hvordan man prøver å endre (også Siri for handlelisten). Oppgaver som er gitt til personen selv kan alltid krysses av.
+- **Nytt passord:** sett et nytt passord for en person (eller trykk «Lag et»). Har personen ikke innlogging ennå, blir den laget.
+
+Nye familiemedlemmer legges fortsatt inn i `medlemmer`-tabellen (steg 1). De får alle tilganger til admin skrur av.

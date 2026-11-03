@@ -129,8 +129,11 @@ begin
   foreach t in array array['oppgaver', 'hendelser'] loop
     execute format('drop policy if exists "medlem leser" on public.%I', t);
     execute format('create policy "medlem leser" on public.%I for select to authenticated using (public.er_medlem())', t);
-    execute format('drop policy if exists "medlem skriver" on public.%I', t);
-    execute format('create policy "medlem skriver" on public.%I for all to authenticated using (public.er_medlem()) with check (public.er_medlem())', t);
+    -- Når admin.sql er kjørt, styres skrivetilgang per person der ("rett skriver")
+    if to_regprocedure('public.har_rett(text)') is null then
+      execute format('drop policy if exists "medlem skriver" on public.%I', t);
+      execute format('create policy "medlem skriver" on public.%I for all to authenticated using (public.er_medlem()) with check (public.er_medlem())', t);
+    end if;
   end loop;
 end $$;
 

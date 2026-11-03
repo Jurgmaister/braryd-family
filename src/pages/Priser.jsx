@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer } from '../data.js';
+import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer, useRett } from '../data.js';
 import { butikk } from '../config.js';
 import { kr, tidSiden } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
@@ -163,6 +163,7 @@ function Kjedemerke({ kode, navn }) {
 }
 
 function ProduktKort({ t, onApne }) {
+  const kanHandle = useRett('handle');
   return (
     <li className={t.forpris ? 'card tilbud tilbud-billigst' : 'card tilbud'}>
       <button type="button" className="tilbud-bilde" onClick={onApne} aria-label={`Vis ${t.navn}`}>
@@ -177,16 +178,19 @@ function ProduktKort({ t, onApne }) {
       <div className="tilbud-pris">
         <span className="pris">{kr(t.pris)}</span>
         {enhetTekst(t) && <span className="muted liten">{enhetTekst(t)}</span>}
+{kanHandle && (
         <button type="button" className="ikonknapp ikonknapp-liten" aria-label={`Legg ${t.navn} på handlelisten`}
           onClick={() => leggTilVarer([{ navn: t.navn }], 'tilbud').then(() => toast(`«${t.navn}» lagt på handlelisten`)).catch((e) => toast(e.message))}>
           <Icon name="plus" size={18} />
         </button>
+        )}
       </div>
     </li>
   );
 }
 
 function ProduktSheet({ t, onClose }) {
+  const kanHandle = useRett('handle');
   if (!t) return null;
   return (
     <Sheet open onClose={onClose} tittel={butikk(t.kode, t.kjede).navn}>
@@ -199,10 +203,12 @@ function ProduktSheet({ t, onClose }) {
         </p>
         {t.oppdatert && <p className="muted liten">Prisen er fra nettbutikken, sist oppdatert {tidSiden(t.oppdatert)}. Butikken kan ha andre priser.</p>}
         {t.url && <a className="btn btn-ghost" href={t.url} target="_blank" rel="noopener"><Icon name="external" size={18} /> Se i nettbutikken</a>}
+{kanHandle && (
         <button type="button" className="btn btn-primary"
           onClick={() => leggTilVarer([{ navn: t.navn }], 'tilbud').then(() => { toast(`«${t.navn}» lagt på handlelisten`); onClose(); }).catch((e) => toast(e.message))}>
           <Icon name="cart" size={18} /> Legg på handlelisten
         </button>
+        )}
       </div>
     </Sheet>
   );

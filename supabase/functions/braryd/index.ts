@@ -13,6 +13,7 @@
 //   push-test      – sender et testvarsel til egne enheter.
 //   send-melding   – push-melding til hele familien eller én person {til, tittel, tekst}.
 //   oppgave-tildelt– varsler den som har fått en oppgave {id}.
+//   admin-passord  – admin setter nytt passord for et familiemedlem {email, passord}. Kun admin.
 //   varsle         – automatiske varsler: oppgaver med frist i dag / over fristen, kalenderhendelser
 //                    og bursdager. Kalles hvert kvarter av GitHub Actions. Åpen, men sender aldri dobbelt.
 //
@@ -83,6 +84,7 @@ async function medlemFraNokkel(nokkel: string | null) {
 async function siriLeggTil(nokkel: string | null, tekst: string) {
   const email = await medlemFraNokkel(nokkel);
   if (!email) return text("Siri-nøkkelen virker ikke. Hent en ny i BraRyd under Innstillinger.", 401);
+  if (!(await harRett(email, "handle"))) return text("Du har bare innsyn i handlelisten. Spør Jørgen om tilgang.");
   const varer = tolkVarer(tekst || "");
   if (!varer.length) return text("Jeg fikk ikke med meg noen varer. Prøv igjen.");
 
@@ -123,6 +125,15 @@ async function medlemEpost(req: Request): Promise<string | null> {
   if (error || !email) return null;
   const { data: m } = await admin.from("medlemmer").select("email").ilike("email", email).maybeSingle();
   return m ? m.email.toLowerCase() : null;
+}
+
+// Tilgang per person (admin.sql). Mangler kolonnene, har alle tilgang.
+async function harRett(email: string, rett: "push" | "handle" | "oppgaver" | "kalender" | "middag") {
+  const { data } = await admin.from("medlemmer").select("*").ilike("email", email).maybeSingle();
+  if (!data) return false;
+  if (data.admin) return true;
+  const v = data[`kan_${rett}`];
+  return v === undefined ? true : Boolean(v);
 }
 
 // ---------- Treff mellom varenavn og produktnavn ----------
@@ -578,6 +589,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, sendt: n });
     }
     if (action === "send-melding") {
+      if (!(await harRett(meg, "push"))) return json({ error: "Du har ikke tilgang til å sende meldinger" }, 403);
       const tekst = String(body.tekst || "").trim().slice(0, 500);
       if (!tekst) return json({ error: "Skriv en melding" }, 400);
       const til = body.til ? String(body.til).toLowerCase() : null;
@@ -590,6 +602,32 @@ Deno.serve(async (req) => {
       }
       const n = await pushTil(mottakere, { title: body.tittel ? `${fra}: ${body.tittel}` : `Melding fra ${fra}`, body: tekst, url: "#/" });
       return json({ ok: true, sendt: n });
+    }
+    if (action === "admin-passord") {
+      const { data: jeg } = await admin.from("medlemmer").select("*").ilike("email", meg).maybeSingle();
+      if (!jeg?.admin) return json({ error: "Bare admin kan endre passord" }, 403);
+      const email = String(body.email || "").toLowerCase().trim();
+      const passord = String(body.passord || "");
+      if (passord.length < 8) return json({ error: "Passordet må ha minst 8 tegn" }, 400);
+      const { data: m } = await admin.from("medlemmer").select("email").ilike("email", email).maybeSingle();
+      if (!m) return json({ error: "Finner ikke familiemedlemmet" }, 404);
+      // Finn brukeren i Supabase Auth
+      let brukerId: string | null = null;
+      for (let side = 1; side <= 20 && !brukerId; side++) {
+        const { data, error } = await admin.auth.admin.listUsers({ page: side, perPage: 200 });
+        if (error) return json({ error: error.message }, 500);
+        brukerId = data.users.find((u) => (u.email || "").toLowerCase() === email)?.id ?? null;
+        if (data.users.length < 200) break;
+      }
+      if (!brukerId) {
+        // Ingen innlogging ennå: lag den, ferdig bekreftet
+        const { error } = await admin.auth.admin.createUser({ email, password: passord, email_confirm: true });
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, opprettet: true });
+      }
+      const { error } = await admin.auth.admin.updateUserById(brukerId, { password: passord });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
     }
     if (action === "oppgave-tildelt") {
       const { data: t } = await admin.from("oppgaver").select("tittel, tildelt, frist").eq("id", Number(p("id"))).maybeSingle();

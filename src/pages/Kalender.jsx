@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
-import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor } from '../data.js';
+import { useHendelser, useOppgaver, useMedlemmer, navnFor, fargeFor, lagreHendelse, varslerFor, useRett } from '../data.js';
+import KunInnsyn from '../components/KunInnsyn.jsx';
 import {
   UKEDAGER, MND, isoDato, iDag, fraIso, mandagI, leggTilDager, forekomster, klokke, GJENTAKELSE_HENDELSE,
 } from '../util.js';
@@ -45,6 +46,7 @@ export default function Kalender({ email }) {
   const [valgt, setValgt] = useState(idag);
   const [filter, setFilter] = useState('alle');
   const [apen, setApen] = useState(null);
+  const kan = useRett('kalender');
 
   const forste = mandagI(maaned);
   const dager = Array.from({ length: 42 }, (_, i) => isoDato(leggTilDager(forste, i)));
@@ -72,11 +74,14 @@ export default function Kalender({ email }) {
   const flytt = (n) => setMaaned(new Date(maaned.getFullYear(), maaned.getMonth() + n, 1));
   const tilIdag = () => { const d = new Date(); setMaaned(new Date(d.getFullYear(), d.getMonth(), 1)); setValgt(idag); };
   const vd = fraIso(valgt);
+  const maanedNavn = `${MAANEDER[maaned.getMonth()][0].toUpperCase()}${MAANEDER[maaned.getMonth()].slice(1)} ${maaned.getFullYear()}`;
+  const paaIdag = valgt === idag && maaned.getMonth() === new Date().getMonth() && maaned.getFullYear() === new Date().getFullYear();
 
   return (
     <main className="page">
-      <Topbar tittel="Kalender" under={`${MAANEDER[maaned.getMonth()][0].toUpperCase()}${MAANEDER[maaned.getMonth()].slice(1)} ${maaned.getFullYear()}`}>
-        <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({ dato: valgt })} aria-label="Ny hendelse"><Icon name="plus" /></button>
+      <Topbar tittel="Kalender" under={`I dag: ${UKEDAGER[new Date().getDay()]} ${new Date().getDate()}. ${MND[new Date().getMonth()]}`}>
+        <button type="button" className={paaIdag ? 'idagknapp' : 'idagknapp idagknapp-aktiv'} onClick={tilIdag} aria-label="Gå til i dag">I dag</button>
+        {kan && <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({ dato: valgt })} aria-label="Ny hendelse"><Icon name="plus" /></button>}
       </Topbar>
 
       <div className="chips scroll">
@@ -91,12 +96,13 @@ export default function Kalender({ email }) {
         ))}
       </div>
 
+      {!kan && <KunInnsyn hva="kalenderen" />}
       {feil && <p className="feil">{feil}</p>}
 
       <section className="card kal">
         <div className="kal-topp">
           <button type="button" className="ikonknapp" onClick={() => flytt(-1)} aria-label="Forrige måned"><Icon name="chevronL" /></button>
-          <button type="button" className="lenkeknapp" onClick={tilIdag}>I dag</button>
+          <span className="kal-maaned">{maanedNavn}</span>
           <button type="button" className="ikonknapp" onClick={() => flytt(1)} aria-label="Neste måned"><Icon name="chevronR" /></button>
         </div>
         <div className="kal-grid">
@@ -124,8 +130,8 @@ export default function Kalender({ email }) {
       <section className="gruppe">
         <h2 className="gruppe-tittel">{valgt === idag ? 'I dag' : `${UKEDAGER[vd.getDay()][0].toUpperCase()}${UKEDAGER[vd.getDay()].slice(1)} ${vd.getDate()}. ${MND[vd.getMonth()]}`}</h2>
         {!dagensHendelser.length && !dagensOppgaver.length && (
-          <button type="button" className="card tomdag" onClick={() => setApen({ dato: valgt })}>
-            <span className="muted">Ingenting i kalenderen</span><Icon name="plus" size={18} />
+          <button type="button" className="card tomdag" onClick={() => kan && setApen({ dato: valgt })}>
+            <span className="muted">Ingenting i kalenderen</span>{kan && <Icon name="plus" size={18} />}
           </button>
         )}
         {dagensHendelser.length > 0 && (
@@ -151,7 +157,7 @@ export default function Kalender({ email }) {
         </section>
       )}
 
-      <HendelseSkjema hendelse={apen} medlemmer={medlemmer} meg={email.toLowerCase()} onClose={() => setApen(null)} />
+      <HendelseSkjema hendelse={apen} medlemmer={medlemmer} meg={email.toLowerCase()} kan={kan} onClose={() => setApen(null)} />
     </main>
   );
 }
@@ -184,7 +190,7 @@ function HendelseRad({ h, medlemmer, visDato, onApne }) {
   );
 }
 
-function HendelseSkjema({ hendelse, medlemmer, meg, onClose }) {
+function HendelseSkjema({ hendelse, medlemmer, meg, kan, onClose }) {
   const [f, setF] = useState({});
   const [jobber, setJobber] = useState(false);
   useEffect(() => {
@@ -236,7 +242,7 @@ function HendelseSkjema({ hendelse, medlemmer, meg, onClose }) {
 
   const bursdag = f.type === 'bursdag';
   return (
-    <Sheet open onClose={onClose} tittel={ny ? (bursdag ? 'Ny bursdag' : 'Ny hendelse') : (bursdag ? 'Bursdag' : 'Hendelse')}
+    <Sheet open onClose={onClose} lesemodus={!kan} tittel={ny ? (bursdag ? 'Ny bursdag' : 'Ny hendelse') : (bursdag ? 'Bursdag' : 'Hendelse')}
       footer={(
         <div className="knapperad">
           {!ny && <button type="button" className="btn btn-ghost fare" onClick={slett} disabled={jobber}><Icon name="trash" size={18} /></button>}

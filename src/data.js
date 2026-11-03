@@ -47,12 +47,38 @@ function useStore(store) {
 
 // ---------- Medlemmer ----------
 const medlemStore = lagStore(async () => {
-  const { data, error } = await supabase.from('medlemmer').select('email, navn, farge').order('navn');
+  const { data, error } = await supabase.from('medlemmer').select('*').order('navn');
   if (error) throw error;
   return data;
 });
 export const useMedlemmer = () => useStore(medlemStore) || [];
 export const lastMedlemmerPaaNytt = () => medlemStore.last();
+
+// ---------- Tilganger (styres av admin) ----------
+let minEpost = '';
+export const settMinEpost = (e) => { minEpost = (e || '').toLowerCase(); };
+export const RETTER = [
+  { id: 'push', navn: 'Sende push-meldinger' },
+  { id: 'oppgaver', navn: 'Endre oppgaver' },
+  { id: 'kalender', navn: 'Endre kalender' },
+  { id: 'middag', navn: 'Endre middager' },
+  { id: 'handle', navn: 'Endre handleliste' },
+];
+export function harRett(m, rett) {
+  if (!m) return true;
+  if (m.admin) return true;
+  const v = m[`kan_${rett}`];
+  return v === undefined ? true : Boolean(v);
+}
+// true = kan endre i denne delen av appen; false = kun innsyn
+export function useRett(rett) {
+  const m = useMedlemmer();
+  return harRett(m.find((x) => x.email.toLowerCase() === minEpost), rett);
+}
+export function useErAdmin() {
+  const m = useMedlemmer();
+  return Boolean(m.find((x) => x.email.toLowerCase() === minEpost)?.admin);
+}
 export function fargeFor(medlemmer, email) {
   if (!email) return FAMILIEFARGE;
   const i = medlemmer.findIndex((m) => m.email.toLowerCase() === email.toLowerCase());

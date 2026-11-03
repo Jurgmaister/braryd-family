@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
 import {
-  useMiddager, hentPlan, settPlan, fjernPlan, middagFraNavn, leggTilVarer, kanalnavn,
+  useMiddager, hentPlan, settPlan, fjernPlan, middagFraNavn, leggTilVarer, kanalnavn, useRett,
 } from '../data.js';
+import KunInnsyn from '../components/KunInnsyn.jsx';
 import {
   UKEDAGER, MND, isoDato, iDag, mandagI, leggTilDager, ukenummer, fraIso, relativDato, ingrediensLinjer, normaliser,
 } from '../util.js';
@@ -18,6 +19,8 @@ export default function Uke() {
   const [plan, setPlan] = useState({});
   const [valgt, setValgt] = useState(null);
   const middager = useMiddager();
+  const kan = useRett('middag');
+  const kanHandle = useRett('handle');
   const byId = useMemo(() => new Map((middager || []).map((m) => [m.id, m])), [middager]);
 
   const dager = useMemo(() => Array.from({ length: 7 }, (_, i) => isoDato(leggTilDager(mandag, i))), [mandag]);
@@ -83,7 +86,7 @@ export default function Uke() {
           const forbi = d < idag;
           return (
             <li key={d}>
-              <button type="button" className={`dag ${d === idag ? 'dag-idag' : ''} ${forbi ? 'dag-forbi' : ''}`} onClick={() => setValgt(d)}>
+              <button type="button" className={`dag ${d === idag ? 'dag-idag' : ''} ${forbi ? 'dag-forbi' : ''}`} onClick={() => (kan || navn) && setValgt(d)}>
                 <span className="dag-dato">
                   <span className="dag-ukedag">{UKEDAGER[dato.getDay()].slice(0, 3)}</span>
                   <span className="dag-tall">{dato.getDate()}</span>
@@ -94,26 +97,27 @@ export default function Uke() {
                     : <span className="dag-tom">{forbi ? 'Ingenting registrert' : 'Velg middag'}</span>}
                 </span>
                 {m?.oppskrift_url && <span className="dag-merke" title="Har oppskrift"><Icon name="link" size={16} /></span>}
-                {!navn && !forbi && <Icon name="plus" size={20} />}
+                {!navn && !forbi && kan && <Icon name="plus" size={20} />}
               </button>
             </li>
           );
         })}
       </ul>
 
-      {kommende.length > 0 && (
+      {!kan && <KunInnsyn hva="middagsplanen" />}
+      {kommende.length > 0 && kanHandle && (
         <button type="button" className="btn btn-ghost" onClick={() => ukasIngredienser().catch((e) => toast(e.message))}>
           <Icon name="cart" size={18} /> Legg ukas ingredienser på handlelisten
         </button>
       )}
 
-      <DagSheet dato={valgt} rad={valgt ? plan[valgt] : null} middager={middager || []} byId={byId}
+      <DagSheet dato={valgt} rad={valgt ? plan[valgt] : null} middager={middager || []} byId={byId} kan={kan} kanHandle={kanHandle}
         onClose={() => setValgt(null)} onEndret={() => last()} />
     </main>
   );
 }
 
-function DagSheet({ dato, rad, middager, byId, onClose, onEndret }) {
+function DagSheet({ dato, rad, middager, byId, kan, kanHandle, onClose, onEndret }) {
   const [velger, setVelger] = useState(false);
   const [sok, setSok] = useState('');
   const [notat, setNotat] = useState('');
@@ -121,7 +125,7 @@ function DagSheet({ dato, rad, middager, byId, onClose, onEndret }) {
 
   useEffect(() => {
     setSok(''); setNotat(rad?.notat || '');
-    setVelger(!rad?.middag_id && !rad?.tekst);
+    setVelger(kan && !rad?.middag_id && !rad?.tekst);
   }, [dato, rad]);
 
   if (!dato) return null;
@@ -181,7 +185,7 @@ function DagSheet({ dato, rad, middager, byId, onClose, onEndret }) {
 
   const ingredienser = m ? ingrediensLinjer(m.ingredienser) : [];
   return (
-    <Sheet open onClose={onClose} tittel={tittel}
+    <Sheet open onClose={onClose} tittel={tittel} lesemodus={!kan}
       footer={(
         <div className="knapperad">
           <button type="button" className="btn btn-ghost" disabled={jobber} onClick={() => setVelger(true)}>Bytt</button>
@@ -198,7 +202,7 @@ function DagSheet({ dato, rad, middager, byId, onClose, onEndret }) {
             <Icon name="external" size={18} /> Åpne oppskriften
           </a>
         )}
-        {ingredienser.length > 0 && (
+        {ingredienser.length > 0 && kanHandle && (
           <button type="button" className="btn btn-ghost" disabled={jobber}
             onClick={() => gjor(() => leggTilVarer(ingredienser, 'middag'), `La til ${ingredienser.length} varer på handlelisten`)}>
             <Icon name="cart" size={18} /> Legg {ingredienser.length} ingredienser på handlelisten

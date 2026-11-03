@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
 import {
   useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer,
-  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe,
+  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett,
 } from '../data.js';
+import KunInnsyn from '../components/KunInnsyn.jsx';
 import { butikk } from '../config.js';
 import { tolkVarer, normaliser, kr, initialer } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
@@ -39,6 +40,7 @@ export default function Handleliste({ liste }) {
 
   const { pris } = usePriser(aktive.map((v) => v.navn));
   const inn = useInnstillinger();
+  const kan = useRett('handle');
   const butikker = inn?.butikker;
   const lagrede = useLagredeLister();
   const aktivId = aktivListeId(inn);
@@ -77,24 +79,27 @@ export default function Handleliste({ liste }) {
   return (
     <main className="page">
       <Topbar tittel="Handleliste" under={varer ? (aktive.length ? `${aktive.length} ${aktive.length === 1 ? 'vare' : 'varer'}` : 'Alt er handlet') : ''}>
-        <button type="button" className="ikonknapp" onClick={() => setListerApen(true)} aria-label="Lagrede lister"><Icon name="list" /></button>
-        <button type="button" className="ikonknapp" onClick={() => setLagreApen(true)} aria-label="Lagre listen" disabled={!(varer || []).length}><Icon name="save" /></button>
+        {kan && <button type="button" className="ikonknapp" onClick={() => setListerApen(true)} aria-label="Lagrede lister"><Icon name="list" /></button>}
+        {kan && <button type="button" className="ikonknapp" onClick={() => setLagreApen(true)} aria-label="Lagre listen" disabled={!(varer || []).length}><Icon name="save" /></button>}
       </Topbar>
 
       {aktivListe && (
         <div className="aktivliste">
           <Icon name="list" size={16} />
           <span className="vokse">Fra lagret liste: <b>{aktivListe.navn}</b></span>
-          <button type="button" className="lenkeknapp" onClick={() => setLagreApen(true)}>Lagre endringer</button>
-          <button type="button" className="ikonknapp ikonknapp-liten-graa" onClick={() => settAktivListe(null)} aria-label="Ikke koble til listen"><Icon name="close" size={16} /></button>
+          {kan && <button type="button" className="lenkeknapp" onClick={() => setLagreApen(true)}>Lagre endringer</button>}
+          {kan && <button type="button" className="ikonknapp ikonknapp-liten-graa" onClick={() => settAktivListe(null)} aria-label="Ikke koble til listen"><Icon name="close" size={16} /></button>}
         </div>
       )}
 
+      {!kan && <KunInnsyn hva="handlelisten" />}
+      {kan && (
       <form className="leggtil" onSubmit={leggTil}>
         <input value={tekst} onChange={(e) => setTekst(e.target.value)} placeholder="Legg til vare (flere: skill med ;)"
           enterKeyHint="done" autoComplete="off" />
         <button type="submit" className="ikonknapp ikonknapp-fylt" aria-label="Legg til"><Icon name="plus" /></button>
       </form>
+      )}
 
       {feil && <p className="feil">{feil}</p>}
       {varer == null && <div className="spinner" />}
@@ -111,7 +116,7 @@ export default function Handleliste({ liste }) {
           <ul className="card varer">
             {g.liste.map((v) => (
               <VareRad key={v.id} v={v} tilbud={prisFor(v)} medlemmer={medlemmer}
-                onVeksle={() => veksle(v)} onApne={() => setRedigerer(v)} />
+                kan={kan} onVeksle={() => veksle(v)} onApne={() => setRedigerer(v)} />
             ))}
           </ul>
         </section>
@@ -126,15 +131,15 @@ export default function Handleliste({ liste }) {
           {visKurv && (
             <>
               <ul className="card varer">
-                {kurv.map((v) => <VareRad key={v.id} v={v} tilbud={[]} medlemmer={medlemmer} onVeksle={() => veksle(v)} onApne={() => setRedigerer(v)} />)}
+                {kurv.map((v) => <VareRad key={v.id} v={v} tilbud={[]} medlemmer={medlemmer} kan={kan} onVeksle={() => veksle(v)} onApne={() => setRedigerer(v)} />)}
               </ul>
-              <button type="button" className="btn btn-ghost" onClick={tomKurv}><Icon name="trash" size={18} /> Fjern alt i kurven</button>
+              {kan && <button type="button" className="btn btn-ghost" onClick={tomKurv}><Icon name="trash" size={18} /> Fjern alt i kurven</button>}
             </>
           )}
         </section>
       )}
 
-      <VareSkjema vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []}
+      <VareSkjema kan={kan} vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []}
         onClose={() => setRedigerer(null)} setVarer={setVarer} medlemmer={medlemmer} />
       <LagreListe open={lagreApen} onClose={() => setLagreApen(false)} varer={varer || []} lagrede={lagrede || []} aktivId={aktivListe?.id || null} />
       <LagredeLister open={listerApen} onClose={() => setListerApen(false)} aktive={aktive} setVarer={setVarer} lagrede={lagrede} />
@@ -142,13 +147,13 @@ export default function Handleliste({ liste }) {
   );
 }
 
-function VareRad({ v, tilbud, medlemmer, onVeksle, onApne }) {
+function VareRad({ v, tilbud, medlemmer, kan = true, onVeksle, onApne }) {
   const topp = tilbud.slice(0, 3);
   const prisfall = topp.some((t) => t.forpris);
   const hvem = navnFor(medlemmer, v.lagt_til_av);
   return (
     <li className={v.kjopt ? 'vare vare-kjopt' : 'vare'}>
-      <button type="button" className="hake" onClick={onVeksle} aria-label={v.kjopt ? `Angre ${v.navn}` : `Kjøpt ${v.navn}`} aria-pressed={v.kjopt}>
+      <button type="button" className="hake" disabled={!kan} onClick={onVeksle} aria-label={v.kjopt ? `Angre ${v.navn}` : `Kjøpt ${v.navn}`} aria-pressed={v.kjopt}>
         {v.kjopt && <Icon name="check" size={16} strokeWidth={2.6} />}
       </button>
       <button type="button" className="vare-tekst" onClick={onApne}>
@@ -174,7 +179,7 @@ function VareRad({ v, tilbud, medlemmer, onVeksle, onApne }) {
   );
 }
 
-function VareSkjema({ vare, kategorier, tilbud, onClose, setVarer, medlemmer }) {
+function VareSkjema({ kan, vare, kategorier, tilbud, onClose, setVarer, medlemmer }) {
   const [f, setF] = useState({});
   useEffect(() => { setF(vare ? { navn: vare.navn, antall: vare.antall, kategori: vare.kategori } : {}); }, [vare]);
   if (!vare) return null;
@@ -201,7 +206,7 @@ function VareSkjema({ vare, kategorier, tilbud, onClose, setVarer, medlemmer }) 
 
   const hvem = navnFor(medlemmer, vare.lagt_til_av);
   return (
-    <Sheet open onClose={onClose} tittel="Vare"
+    <Sheet open onClose={onClose} lesemodus={!kan} tittel="Vare"
       footer={(
         <div className="knapperad">
           <button type="button" className="btn btn-ghost fare" onClick={slett}><Icon name="trash" size={18} /></button>

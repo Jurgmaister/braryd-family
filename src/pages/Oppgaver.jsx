@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase, callFunction } from '../supabase.js';
-import { useOppgaver, useMedlemmer, navnFor, fargeFor, lagreOppgave } from '../data.js';
+import { useOppgaver, useMedlemmer, navnFor, fargeFor, lagreOppgave, useRett } from '../data.js';
+import KunInnsyn from '../components/KunInnsyn.jsx';
 import {
   iDag, isoDato, fraIso, leggTilDager, fristTekst, GJENTAKELSE_OPPGAVE, initialer, relativDato,
   gjentakTekst, UKEDAG_KORT, forsteUkedag, kortDato,
@@ -19,6 +20,8 @@ export default function Oppgaver({ email }) {
   const [apen, setApen] = useState(null);
   const [visFerdige, setVisFerdige] = useState(false);
   const [visPause, setVisPause] = useState(false);
+  const kan = useRett('oppgaver');
+  const kanKrysse = (o) => kan || (o.tildelt || '').toLowerCase() === meg;
   const meg = email.toLowerCase();
   const idag = iDag();
   const ukeslutt = isoDato(leggTilDager(fraIso(idag), 7 - ((fraIso(idag).getDay() + 6) % 7) - 1));
@@ -64,7 +67,7 @@ export default function Oppgaver({ email }) {
   return (
     <main className="page">
       <Topbar tittel="Oppgaver" under={rader ? `${aapne.length} åpne${mineAntall ? ` · ${mineAntall} på deg` : ''}` : ''}>
-        <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({})} aria-label="Ny oppgave"><Icon name="plus" /></button>
+        {kan && <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({})} aria-label="Ny oppgave"><Icon name="plus" /></button>}
       </Topbar>
 
       <div className="chips scroll">
@@ -74,13 +77,14 @@ export default function Oppgaver({ email }) {
           ))}
       </div>
 
+      {!kan && <KunInnsyn hva="oppgavene (du kan krysse av dine egne)" />}
       {feil && <p className="feil">{feil}</p>}
       {rader == null && <div className="spinner" />}
       {rader && !aapne.length && (
         <div className="tom">
           <p className="stor-tittel">{filter === 'alle' ? 'Ingen oppgaver' : 'Ingenting her'} 🎉</p>
           <p className="muted">Lag en oppgave, gi den til noen i familien og sett en frist. Faste oppgaver kommer tilbake av seg selv.</p>
-          <button type="button" className="btn btn-primary" onClick={() => setApen({})}>Ny oppgave</button>
+          {kan && <button type="button" className="btn btn-primary" onClick={() => setApen({})}>Ny oppgave</button>}
         </div>
       )}
 
@@ -89,7 +93,7 @@ export default function Oppgaver({ email }) {
           <h2 className={`gruppe-tittel ${id === 'over' ? 'fare-tekst' : ''}`}>{tittel} ({liste.length})</h2>
           <ul className="card varer">
             {liste.map((o) => (
-              <OppgaveRad key={o.id} o={o} medlemmer={medlemmer} idag={idag} onFullfor={() => fullfor(o)} onApne={() => setApen(o)} />
+              <OppgaveRad key={o.id} o={o} medlemmer={medlemmer} idag={idag} kanKrysse={kanKrysse(o)} onFullfor={() => fullfor(o)} onApne={() => setApen(o)} />
             ))}
           </ul>
         </section>
@@ -104,7 +108,7 @@ export default function Oppgaver({ email }) {
           {visPause && (
             <ul className="card varer pauseliste">
               {pausede.map((o) => (
-                <OppgaveRad key={o.id} o={o} medlemmer={medlemmer} idag={idag} onFullfor={() => fullfor(o)} onApne={() => setApen(o)} />
+                <OppgaveRad key={o.id} o={o} medlemmer={medlemmer} idag={idag} kanKrysse={kanKrysse(o)} onFullfor={() => fullfor(o)} onApne={() => setApen(o)} />
               ))}
             </ul>
           )}
@@ -121,7 +125,7 @@ export default function Oppgaver({ email }) {
             <ul className="card varer">
               {ferdige.map((o) => (
                 <li key={o.id} className="vare vare-kjopt">
-                  <button type="button" className="hake" onClick={() => angre(o)} aria-label={`Angre ${o.tittel}`} aria-pressed="true">
+                  <button type="button" className="hake" disabled={!kanKrysse(o)} onClick={() => angre(o)} aria-label={`Angre ${o.tittel}`} aria-pressed="true">
                     <Icon name="check" size={16} strokeWidth={2.6} />
                   </button>
                   <span className="vare-tekst">
@@ -135,17 +139,17 @@ export default function Oppgaver({ email }) {
         </section>
       )}
 
-      <OppgaveSkjema oppgave={apen} medlemmer={medlemmer} meg={meg} onClose={() => setApen(null)} />
+      <OppgaveSkjema oppgave={apen} medlemmer={medlemmer} meg={meg} kan={kan} onClose={() => setApen(null)} />
     </main>
   );
 }
 
-function OppgaveRad({ o, medlemmer, idag, onFullfor, onApne }) {
+function OppgaveRad({ o, medlemmer, idag, kanKrysse = true, onFullfor, onApne }) {
   const over = o.frist && o.frist < idag;
   const hvem = o.tildelt ? navnFor(medlemmer, o.tildelt) : '';
   return (
     <li className="vare">
-      <button type="button" className="hake" onClick={onFullfor} aria-label={`Ferdig: ${o.tittel}`} />
+      <button type="button" className="hake" disabled={!kanKrysse} onClick={onFullfor} aria-label={`Ferdig: ${o.tittel}`} />
       <button type="button" className="vare-tekst" onClick={onApne}>
         <span className="vare-navn">{o.tittel}</span>
         <span className="oppgave-info">
@@ -162,7 +166,7 @@ function OppgaveRad({ o, medlemmer, idag, onFullfor, onApne }) {
   );
 }
 
-function OppgaveSkjema({ oppgave, medlemmer, meg, onClose }) {
+function OppgaveSkjema({ oppgave, medlemmer, meg, kan, onClose }) {
   const [f, setF] = useState({});
   const [jobber, setJobber] = useState(false);
   const [pauseValg, setPauseValg] = useState(false);
@@ -217,7 +221,7 @@ function OppgaveSkjema({ oppgave, medlemmer, meg, onClose }) {
   }
 
   return (
-    <Sheet open onClose={onClose} tittel={ny ? 'Ny oppgave' : 'Oppgave'}
+    <Sheet open onClose={onClose} lesemodus={!kan} tittel={ny ? 'Ny oppgave' : 'Oppgave'}
       footer={(
         <div className="knapperad">
           {!ny && <button type="button" className="btn btn-ghost fare" onClick={slett} disabled={jobber}><Icon name="trash" size={18} /></button>}

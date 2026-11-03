@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import Icon from './Icon.jsx';
 
 // Panel som glir opp nederfra (fungerer som et vindu på mobil).
-export default function Sheet({ open, onClose, tittel, children, footer }) {
+// lesemodus: alt i panelet er låst (kun innsyn), og knappene nederst skjules.
+export default function Sheet({ open, onClose, tittel, children, footer, lesemodus = false }) {
   useEffect(() => {
     if (!open) return undefined;
     const esc = (e) => { if (e.key === 'Escape') onClose(); };
@@ -20,8 +21,11 @@ export default function Sheet({ open, onClose, tittel, children, footer }) {
           <h2 className="h2">{tittel}</h2>
           <button type="button" className="ikonknapp" onClick={onClose} aria-label="Lukk"><Icon name="close" /></button>
         </div>
-        <div className="sheet-innhold">{children}</div>
-        {footer && <div className="sheet-bunn">{footer}</div>}
+        <div className="sheet-innhold">
+          {lesemodus && <p className="innsyn-merke">👀 Kun innsyn</p>}
+          {lesemodus ? <fieldset disabled className="innsyn">{children}</fieldset> : children}
+        </div>
+        {footer && !lesemodus && <div className="sheet-bunn">{footer}</div>}
       </div>
     </div>
   );

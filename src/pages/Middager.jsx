@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMiddager, lagreMiddag, slettMiddag, settPlan, leggTilVarer } from '../data.js';
+import { useMiddager, lagreMiddag, slettMiddag, settPlan, leggTilVarer, useRett } from '../data.js';
+import KunInnsyn from '../components/KunInnsyn.jsx';
 import { relativDato, normaliser, ingrediensLinjer, iDag } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
 import Sheet from '../components/Sheet.jsx';
@@ -19,6 +20,7 @@ export default function Middager() {
   const [sok, setSok] = useState('');
   const [sort, setSort] = useState('mest');
   const [apen, setApen] = useState(null); // middag-objekt, eller {} for ny
+  const kan = useRett('middag');
 
   const liste = useMemo(() => {
     const q = normaliser(sok);
@@ -39,7 +41,7 @@ export default function Middager() {
     <main className="page">
       <a className="lenkeknapp tilbake" href="#/middag"><Icon name="chevronL" size={18} /> Ukeplan</a>
       <Topbar tittel="Middager" under={middager ? `${middager.length} lagret` : ''}>
-        <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({})} aria-label="Ny middag"><Icon name="plus" /></button>
+        {kan && <button type="button" className="ikonknapp ikonknapp-fylt" onClick={() => setApen({})} aria-label="Ny middag"><Icon name="plus" /></button>}
       </Topbar>
 
       <div className="sokefelt">
@@ -57,7 +59,7 @@ export default function Middager() {
         <div className="tom">
           <p className="stor-tittel">Ingen middager ennå</p>
           <p className="muted">Middager du velger i ukeplanen lagres her automatisk. Du kan også legge dem inn selv, med lenke til oppskriften.</p>
-          <button type="button" className="btn btn-primary" onClick={() => setApen({})}>Legg inn første middag</button>
+          {kan && <button type="button" className="btn btn-primary" onClick={() => setApen({})}>Legg inn første middag</button>}
         </div>
       )}
 
@@ -77,12 +79,13 @@ export default function Middager() {
         ))}
       </ul>
 
-      <MiddagSkjema middag={apen} onClose={() => setApen(null)} />
+      {!kan && <KunInnsyn hva="middagene" />}
+      <MiddagSkjema middag={apen} kan={kan} onClose={() => setApen(null)} />
     </main>
   );
 }
 
-function MiddagSkjema({ middag, onClose }) {
+function MiddagSkjema({ middag, kan, onClose }) {
   const [f, setF] = useState({});
   const [jobber, setJobber] = useState(false);
   const [dato, setDato] = useState(iDag());
@@ -118,7 +121,7 @@ function MiddagSkjema({ middag, onClose }) {
 
   const ingredienser = ingrediensLinjer(f.ingredienser);
   return (
-    <Sheet open onClose={onClose} tittel={ny ? 'Ny middag' : 'Middag'}
+    <Sheet open onClose={onClose} lesemodus={!kan} tittel={ny ? 'Ny middag' : 'Middag'}
       footer={(
         <div className="knapperad">
           {!ny && <button type="button" className="btn btn-ghost fare" onClick={slett} disabled={jobber}><Icon name="trash" size={18} /></button>}

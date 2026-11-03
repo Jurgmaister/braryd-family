@@ -3,7 +3,7 @@ import { pushStottes, maaInstalleres, aktivtAbonnement, slaaPaaPush, slaaAvPush 
 import { callFunction } from '../supabase.js';
 import { supabase } from '../supabase.js';
 import { FUNCTION_URL, BUTIKKER } from '../config.js';
-import { useMedlemmer, lastMedlemmerPaaNytt, useInnstillinger, lastInnstillingerPaaNytt } from '../data.js';
+import { useMedlemmer, lastMedlemmerPaaNytt, useInnstillinger, lastInnstillingerPaaNytt, useErAdmin } from '../data.js';
 import Topbar from '../components/Topbar.jsx';
 import Icon from '../components/Icon.jsx';
 import { toast } from '../components/Toast.jsx';
@@ -15,6 +15,7 @@ async function kopier(tekst, hva) {
 export default function Innstillinger({ email }) {
   const medlemmer = useMedlemmer();
   const meg = medlemmer.find((m) => m.email.toLowerCase() === email.toLowerCase());
+  const erAdmin = useErAdmin();
   const [navn, setNavn] = useState('');
   useEffect(() => { if (meg) setNavn(meg.navn); }, [meg]);
 
@@ -37,6 +38,13 @@ export default function Innstillinger({ email }) {
         <p className="muted liten">Familien: {medlemmer.map((m) => m.navn).join(', ')}</p>
       </section>
 
+      {erAdmin && (
+        <a className="card card-link" href="#/admin">
+          <Icon name="lock" />
+          <span className="vokse"><b>Admin</b><br /><span className="muted liten">Tilganger og passord for familien</span></span>
+          <Icon name="chevronR" />
+        </a>
+      )}
       <Varsler />
       <Siri />
       <TilbudInnstillinger />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isConfigured } from './config.js';
 import { supabase } from './supabase.js';
-import { useSession, useHandleliste, useOppgaver } from './data.js';
+import { useSession, useHandleliste, useOppgaver, settMinEpost } from './data.js';
 import { fornyAbonnement } from './push.js';
 import { iDag } from './util.js';
 import Login from './pages/Login.jsx';
@@ -12,6 +12,7 @@ import Middager from './pages/Middager.jsx';
 import Innstillinger from './pages/Innstillinger.jsx';
 import Oppgaver from './pages/Oppgaver.jsx';
 import Kalender from './pages/Kalender.jsx';
+import Admin from './pages/Admin.jsx';
 import TabBar from './components/TabBar.jsx';
 import Toast from './components/Toast.jsx';
 
@@ -64,6 +65,7 @@ function Innlogget({ route }) {
 }
 
 function Skall({ route, email }) {
+  settMinEpost(email);
   const liste = useHandleliste();
   const { rader: oppgaver } = useOppgaver();
   const [seksjon] = route;
@@ -83,6 +85,7 @@ function Skall({ route, email }) {
   else if (seksjon === 'middager') { side = <Middager />; aktiv = 'uke'; }
   else if (seksjon === 'oppgaver') side = <Oppgaver email={email} />;
   else if (seksjon === 'innstillinger') side = <Innstillinger email={email} />;
+  else if (seksjon === 'admin') { side = <Admin />; aktiv = 'innstillinger'; }
   else { side = <Kalender email={email} />; aktiv = 'kalender'; }
 
   return (
