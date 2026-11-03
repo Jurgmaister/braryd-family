@@ -300,3 +300,8 @@ img { max-width: 100%; }
 .totalliste { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .totalliste li { display: flex; align-items: center; gap: 10px; }
 .totalliste .kjedemerke { min-width: 72px; text-align: center; }
+.prisrekke { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--pine); font-size: 12px; }
+.prisbit { font-weight: 600; color: var(--muted); background: var(--sunk); padding: 2px 7px; border-radius: 7px; white-space: nowrap; }
+.prisbit-best { color: var(--pine); background: var(--pine-soft); }
+.prisbit-fall { color: var(--clay); background: var(--clay-soft); }
+.prisbit-fall-tekst { font-weight: 700; color: var(--clay); }

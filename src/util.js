@@ -71,11 +71,12 @@ const ENHETER = 'stk|stykk|pk|pakke|pakker|pose|poser|boks|bokser|flaske|flasker
 const TALL_ORD = { en: '1', ett: '1', ei: '1', to: '2', tre: '3', fire: '4', fem: '5', seks: '6', sju: '7', syv: '7', åtte: '8', ni: '9', ti: '10', tolv: '12' };
 const ANTALL_RE = new RegExp(`^(\\d+(?:[.,]\\d+)?|${Object.keys(TALL_ORD).join('|')})\\s*(${ENHETER})?\\.?\\s+(.+)$`, 'i');
 
-// «2 liter melk, egg og brød» → [{navn:'Melk', antall:'2 liter'}, {navn:'Egg'}, {navn:'Brød'}]
+// Én vare per linje i appen; flere varer skilles med semikolon (komma kan brukes i varenavnet).
+// «2 liter melk; Ost, revet; brød» → [{navn:'Melk', antall:'2 liter'}, {navn:'Ost, revet'}, {navn:'Brød'}]
 export function tolkVarer(input) {
   return (input || '')
     .replace(/[.!?]+$/g, '')
-    .split(/\s*(?:,|;|\n|\bog\b)\s*/i)
+    .split(/\s*(?:;|\n)\s*/)
     .map((s) => s.trim())
     .filter(Boolean)
     .map((del) => {

@@ -74,7 +74,7 @@ export default function Handleliste({ liste }) {
       </Topbar>
 
       <form className="leggtil" onSubmit={leggTil}>
-        <input value={tekst} onChange={(e) => setTekst(e.target.value)} placeholder="Legg til, f.eks. «melk, 2 agurk og brød»"
+        <input value={tekst} onChange={(e) => setTekst(e.target.value)} placeholder="Legg til vare (flere: skill med ;)"
           enterKeyHint="done" autoComplete="off" />
         <button type="submit" className="ikonknapp ikonknapp-fylt" aria-label="Legg til"><Icon name="plus" /></button>
       </form>
@@ -126,7 +126,8 @@ export default function Handleliste({ liste }) {
 }
 
 function VareRad({ v, tilbud, medlemmer, onVeksle, onApne }) {
-  const billigst = tilbud[0];
+  const topp = tilbud.slice(0, 3);
+  const prisfall = topp.some((t) => t.forpris);
   const hvem = navnFor(medlemmer, v.lagt_til_av);
   return (
     <li className={v.kjopt ? 'vare vare-kjopt' : 'vare'}>
@@ -135,9 +136,15 @@ function VareRad({ v, tilbud, medlemmer, onVeksle, onApne }) {
       </button>
       <button type="button" className="vare-tekst" onClick={onApne}>
         <span className="vare-navn">{v.antall && <span className="vare-antall">{v.antall}</span>}{v.navn}</span>
-        {billigst && !v.kjopt && (
-          <span className={billigst.forpris ? 'tilbudmerke' : 'tilbudmerke tilbudmerke-rolig'}>
-            <Icon name="tag" size={12} /> {billigst.forpris ? 'Prisfall: ' : 'Billigst: '}{kr(billigst.pris)} hos {butikk(billigst.kode, billigst.kjede).navn}
+        {topp.length > 0 && !v.kjopt && (
+          <span className="prisrekke">
+            <Icon name="tag" size={12} />
+            {topp.map((t, i) => (
+              <span key={t.kode} className={t.forpris ? 'prisbit prisbit-fall' : i === 0 ? 'prisbit prisbit-best' : 'prisbit'}>
+                {butikk(t.kode, t.kjede).navn} {kr(t.pris)}
+              </span>
+            ))}
+            {prisfall && <span className="prisbit-fall-tekst">prisfall</span>}
           </span>
         )}
       </button>

@@ -32,7 +32,7 @@ export default function Priser({ liste }) {
       }
     }
     const medPris = perVare.filter((x) => x.treff.length).length;
-    return { rader: [...sum.values()].sort((a, b) => (b.antall - a.antall) || (a.belop - b.belop)).slice(0, 4), medPris };
+    return { rader: [...sum.values()].sort((a, b) => (b.antall - a.antall) || (a.belop - b.belop)).slice(0, 3), medPris };
   })();
 
   const prisfall = perVare.flatMap(({ vare, treff }) => treff.filter((t) => t.forpris).map((t) => ({ vare, t })));
@@ -93,7 +93,7 @@ export default function Priser({ liste }) {
               {data && !treff.length && <p className="muted liten innrykk">Fant ingen pris. Prøv et mer vanlig navn, f.eks. «lettmelk» i stedet for «melk lett».</p>}
               {treff.length > 0 && (
                 <ul className="card prisrader">
-                  {treff.slice(0, 4).map((t, i) => (
+                  {treff.slice(0, 3).map((t, i) => (
                     <li key={t.kode}>
                       <button type="button" className="prisrad" onClick={() => setApen(t)}>
                         <Kjedemerke kode={t.kode} navn={t.kjede} />
@@ -106,7 +106,7 @@ export default function Priser({ liste }) {
                       </button>
                     </li>
                   ))}
-                  {treff.length > 4 && <li className="muted liten flere">+ {treff.length - 4} kjeder til, dyrere</li>}
+                  {treff.length > 3 && <li className="muted liten flere">+ {treff.length - 3} kjeder til, dyrere</li>}
                 </ul>
               )}
             </section>

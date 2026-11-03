@@ -112,7 +112,7 @@ Snarveiene virker på HomePod når **Personlige forespørsler** er slått på: *
 
 **Middager.** Alt dere har spist, med antall ganger og når sist. Hver middag kan ha lenke til oppskrift, ingredienser (én per linje), notat og favorittstjerne. Sorter på mest spist, sist spist, lenge siden, A–Å eller favoritter.
 
-**Handleliste.** Skriv flere varer på en gang: «melk, 2 agurk og brød». Varene sorteres i kategorier i den rekkefølgen man går i butikken. Endrer du kategori på en vare, husker appen det neste gang. Trykk på sirkelen når varen er i kurven. Lagre-knappen øverst lagrer listen (f.eks. «Hyttetur»), og liste-knappen henter lagrede lister fram igjen. Hver vare får et merke med hvor den er billigst i dag, og rødt merke ved prisfall.
+**Handleliste.** Én vare om gangen – komma kan brukes i navnet («Ost, revet»). Flere på en gang skilles med semikolon: «melk; 2 agurk; brød». Varene sorteres i kategorier i den rekkefølgen man går i butikken. Endrer du kategori på en vare, husker appen det neste gang. Trykk på sirkelen når varen er i kurven. Lagre-knappen øverst lagrer listen (f.eks. «Hyttetur»), og liste-knappen henter lagrede lister fram igjen. Hver vare viser de tre billigste kjedene i dag, med rødt ved prisfall.
 
 **Priser.** Dagens priser fra Kassalapp (nettbutikkenes priser). «Handlelisten» viser hva hele listen koster i hver kjede, varer med prisfall de siste ukene, og de billigste kjedene per vare (sammenlignet på kilo- eller literpris når den finnes). «Søk» finner en vare på tvers av kjedene. Prisene mellomlagres i 12 timer, og oppdater-knappen henter på nytt. Ukens kundeaviser er ikke med.
 
