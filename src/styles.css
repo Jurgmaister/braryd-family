@@ -407,3 +407,6 @@ fieldset.innsyn .chip:not(.chip-on), fieldset.innsyn .ukedag:not(.ukedag-on) { o
 .anbefaling-detaljer .kjedemerke { display: inline-block; }
 .sammenligner { margin: -2px 0 8px; }
 .sammenligner-kort { font-weight: 500; }
+
+.fremdrift { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); background: var(--sunk); border-radius: 10px; padding: 8px 12px; }
+.spinner-liten { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--pine); animation: snurr .8s linear infinite; flex-shrink: 0; }

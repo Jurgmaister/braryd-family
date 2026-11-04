@@ -238,22 +238,26 @@ function kategorier(p: any): string[] {
 }
 
 // ---------- Kassalapp ----------
+// Kassalapp gratis: 60 forespørsler i minuttet. Vi holder oss på 50 og stopper i stedet for å vente,
+// så appen kan hente resten litt senere.
+const GRENSE_PER_MIN = 50;
+const kallTider: number[] = [];
+class ForMangeKall extends Error {}
+
 async function kassal(path: string, params: Record<string, string | number | boolean>) {
   const key = Deno.env.get("KASSALAPP_API_KEY");
   if (!key) throw new Error("KASSALAPP_API_KEY mangler i Supabase (Edge Functions → Secrets)");
+  const naa = Date.now();
+  while (kallTider.length && naa - kallTider[0] > 60_000) kallTider.shift();
+  if (kallTider.length >= GRENSE_PER_MIN) throw new ForMangeKall("Grensen per minutt er nådd");
+  kallTider.push(naa);
   const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
-  for (let forsok = 0; forsok < 3; forsok++) {
-    const res = await fetch(`${KASSAL}${path}?${qs}`, { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } });
-    if (res.status === 429) {
-      const vent = Math.min(Number(res.headers.get("retry-after")) || 5, 20);
-      await new Promise((r) => setTimeout(r, vent * 1000));
-      continue;
-    }
-    if (res.status === 401) throw new Error("Kassalapp godtok ikke API-nøkkelen (401)");
-    if (!res.ok) throw new Error(`Kassalapp svarte ${res.status}`);
-    return await res.json();
-  }
-  throw new Error("Kassalapp: for mange forespørsler, prøv igjen om litt");
+  const res = await fetch(`${KASSAL}${path}?${qs}`, { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } });
+  if (res.status === 429) throw new ForMangeKall("Kassalapp: for mange forespørsler");
+  if (res.status === 401) throw new Error("Kassalapp godtok ikke API-nøkkelen (401)");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Kassalapp svarte ${res.status}`);
+  return await res.json();
 }
 
 const ENHET: Record<string, string> = { g: "kg", kg: "kg", hg: "kg", ml: "l", cl: "l", dl: "l", l: "l", stk: "stk" };
@@ -375,32 +379,45 @@ async function prisPerKjede(ean: string, sok: string) {
 }
 
 async function hentPris(sok: string) {
-  const soker = [sok, ...(UTVID[normaliser(sok)] || [])];
   const produkter = new Map<string, any>();
-  for (const q of soker) {
+  const leggTilSok = async (q: string) => {
     const svar = await kassal("/products", { search: q, size: 100 });
-    for (const p of svar.data || []) produkter.set(String(p.id ?? `${p.ean}-${p.store?.code}-${p.name}`), p);
+    for (const p of svar?.data || []) produkter.set(String(p.id ?? `${p.ean}-${p.store?.code}-${p.name}`), p);
+  };
+  await leggTilSok(sok);
+  let valgt = velgTreff(sok, [...produkter.values()]);
+  // Søk bredere (f.eks. fløte → kremfløte/matfløte) bare når første søk ga for få gode treff
+  const utvid = UTVID[normaliser(sok)] || [];
+  if (utvid.length && valgt.treff.length < 4) {
+    for (const q of utvid) await leggTilSok(q);
+    valgt = velgTreff(sok, [...produkter.values()]);
   }
-  const valgt = velgTreff(sok, [...produkter.values()]);
   let { treff, basis } = valgt;
-  let referanse = null;
 
-  // Finnes samme vare i minst tre kjeder? Da sammenlignes den, og de andre kjedenes beste treff legges som alternativ.
+  // Samme vare (EAN) i flere kjeder? Sammenlign akkurat den.
   const ref = velgReferanse(valgt.alle);
   if (ref && ref.kjeder >= 2) {
     try {
-      const like = await prisPerKjede(ref.ean, sok);
+      // Bruk søkeresultatene når de allerede dekker mange kjeder; ellers ett ekstra oppslag
+      let like: any[];
+      if (ref.kjeder >= 5) {
+        const perKjede = new Map<string, any>();
+        for (const t of valgt.alle) if (t.ean === ref.ean && (!perKjede.has(t.kode) || t.pris < perKjede.get(t.kode).pris)) perKjede.set(t.kode, { ...t, samme: true });
+        like = [...perKjede.values()].sort((a, b) => a.pris - b.pris);
+      } else {
+        like = await prisPerKjede(ref.ean, sok);
+      }
       if (like.length >= 3) {
-        referanse = { ean: ref.ean, navn: like[0].navn };
         const har = new Set(like.map((t) => t.kode));
         const andre = treff.filter((t: any) => !har.has(t.kode)).map((t: any) => ({ ...t, samme: false }));
-        treff = like;
-        basis = "pris";
-        return { sok, treff, andre, alle: valgt.alle, basis, referanse, v: PRIS_VERSJON, hentet: new Date().toISOString() };
+        return { sok, treff: like, andre, alle: valgt.alle, basis: "pris", referanse: { ean: ref.ean, navn: like[0].navn }, v: PRIS_VERSJON, hentet: new Date().toISOString() };
       }
-    } catch { /* bruk vanlig sammenligning */ }
+    } catch (e) {
+      if (e instanceof ForMangeKall) throw e;
+      /* ellers: bruk vanlig sammenligning */
+    }
   }
-  return { sok, treff, andre: [], alle: valgt.alle, basis, referanse, v: PRIS_VERSJON, hentet: new Date().toISOString() };
+  return { sok, treff, andre: [], alle: valgt.alle, basis, referanse: null, v: PRIS_VERSJON, hentet: new Date().toISOString() };
 }
 
 async function priser(navnListe: string[], force: boolean) {
@@ -412,28 +429,33 @@ async function priser(navnListe: string[], force: boolean) {
   const gamle = sokeord.filter((s) => force || !resultater[s] || (resultater[s].v || 0) < PRIS_VERSJON
     || Date.now() - Date.parse(resultater[s].hentet) > MAKS_ALDER);
 
+  // Én og én vare, til grensen per minutt er nådd eller det har gått 60 sekunder. Resten hentes senere.
   const feil: string[] = [];
-  let i = 0;
-  const arbeider = async () => {
-    while (i < gamle.length) {
-      const s = gamle[i++];
-      try {
-        const data = await hentPris(s);
-        resultater[s] = data;
-        await admin.from("pris_cache").upsert({ sok: s, data, hentet: data.hentet });
-      } catch (e) {
-        feil.push(`${s}: ${e instanceof Error ? e.message : e}`);
-      }
+  const gjenstaar: string[] = [];
+  const start = Date.now();
+  for (let i = 0; i < gamle.length; i++) {
+    const s = gamle[i];
+    if (Date.now() - start > 60_000) { gjenstaar.push(...gamle.slice(i)); break; }
+    try {
+      const data = await hentPris(s);
+      resultater[s] = data;
+      await admin.from("pris_cache").upsert({ sok: s, data, hentet: data.hentet });
+    } catch (e) {
+      if (e instanceof ForMangeKall) { gjenstaar.push(...gamle.slice(i)); break; }
+      feil.push(`${s}: ${e instanceof Error ? e.message : e}`);
     }
-  };
-  await Promise.all([arbeider(), arbeider(), arbeider()]);
-  return json({ resultater, feil });
+  }
+  return json({ resultater, feil, gjenstaar });
 }
 
 async function sok(q: string) {
   const s = normaliser(q || "");
   if (s.length < 3) return json({ error: "Skriv minst tre bokstaver" }, 400);
-  const data = await hentPris(s);
+  let data;
+  try { data = await hentPris(s); } catch (e) {
+    if (e instanceof ForMangeKall) return json({ error: "Mange prisoppslag akkurat nå – prøv igjen om et minutt" }, 429);
+    throw e;
+  }
   await admin.from("pris_cache").upsert({ sok: s, data, hentet: data.hentet });
   return json(data);
 }

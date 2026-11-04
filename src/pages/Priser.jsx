@@ -3,6 +3,7 @@ import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer, useRett } f
 import { butikk } from '../config.js';
 import { kr, tidSiden } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
+import { Fremdrift } from './Handleliste.jsx';
 import Sheet from '../components/Sheet.jsx';
 import Icon from '../components/Icon.jsx';
 import { toast } from '../components/Toast.jsx';
@@ -12,7 +13,7 @@ const enhetTekst = (t) => (t.enhetspris && t.enhet ? `${kr(t.enhetspris)}/${t.en
 export default function Priser({ liste }) {
   const aktive = (liste.varer || []).filter((v) => !v.kjopt);
   const navn = aktive.map((v) => v.navn);
-  const { pris, laster, feil, oppdater } = usePriser(navn);
+  const { pris, laster, feil, oppdater, fremdrift } = usePriser(navn);
   const inn = useInnstillinger();
   const butikker = inn?.butikker;
   const [modus, setModus] = useState('liste');
@@ -45,7 +46,8 @@ export default function Priser({ liste }) {
         </button>
       </Topbar>
 
-      {feil && <p className="feil">Kunne ikke hente priser: {feil}</p>}
+      {fremdrift && <Fremdrift f={fremdrift} />}
+      {feil && !fremdrift && <p className="feil">Kunne ikke hente priser: {feil}</p>}
 
       <div className="segment" role="tablist">
         <button type="button" role="tab" aria-selected={modus === 'liste'} className={modus === 'liste' ? 'seg seg-on' : 'seg'} onClick={() => setModus('liste')}>Handlelisten</button>

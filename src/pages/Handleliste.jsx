@@ -38,7 +38,7 @@ export default function Handleliste({ liste }) {
       .sort((a, b) => a.rekkefolge - b.rekkefolge);
   }, [aktive, kategorier]);
 
-  const { pris } = usePriser(aktive.map((v) => v.navn));
+  const { pris, fremdrift } = usePriser(aktive.map((v) => v.navn));
   const inn = useInnstillinger();
   const kan = useRett('handle');
   const butikker = inn?.butikker;
@@ -101,6 +101,7 @@ export default function Handleliste({ liste }) {
       </form>
       )}
 
+      {fremdrift && <Fremdrift f={fremdrift} />}
       <Anbefaling varer={aktive.map((v) => ({ vare: v, treff: prisFor(v) }))} />
 
       {feil && <p className="feil">{feil}</p>}
@@ -420,5 +421,14 @@ function Anbefaling({ varer }) {
         </div>
       )}
     </section>
+  );
+}
+
+export function Fremdrift({ f }) {
+  return (
+    <p className="fremdrift">
+      <span className="spinner-liten" /> Henter priser {f.ferdig} av {f.totalt}
+      {f.venter ? ' · venter litt (Kassalapp tillater 60 oppslag i minuttet)' : ' …'}
+    </p>
   );
 }

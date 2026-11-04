@@ -180,13 +180,22 @@ export async function settAktivListe(id) {
 const prisCache = new Map();
 const prisLytt = new Set();
 const prisVarsle = () => prisLytt.forEach((f) => f());
-const prisStatus = { laster: 0, feil: '' };
+const prisStatus = { laster: 0, feil: '', fremdrift: null };
 const MAKS_ALDER = 12 * 3600_000;
 const PRIS_VERSJON = 3; // samme som i serverfunksjonen
 const sokeord = (navn) => normaliserNavn(navn);
 function normaliserNavn(s) { return (s || '').toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim(); }
 
-async function hentPriser(navnListe, force = false) {
+const vent = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Bare én henting om gangen (handlelisten og prissiden kan be samtidig)
+let prisKjede = Promise.resolve();
+function hentPriser(navnListe, force = false) {
+  prisKjede = prisKjede.then(() => hentPriserNaa(navnListe, force)).catch(() => {});
+  return prisKjede;
+}
+
+async function hentPriserNaa(navnListe, force = false) {
   const alle = [...new Set(navnListe.map(sokeord).filter((n) => n.length >= 3))];
   if (!alle.length) return;
   prisStatus.laster++; prisStatus.feil = ''; prisVarsle();
@@ -198,18 +207,32 @@ async function hentPriser(navnListe, force = false) {
       for (const r of data || []) prisCache.set(r.sok, r.data);
       prisVarsle();
     }
-    // 2) Det som mangler eller er gammelt hentes fra Kassalapp via serverfunksjonen
-    const gamle = alle.filter((n) => force || !prisCache.get(n) || (prisCache.get(n).v || 0) < PRIS_VERSJON
+    // 2) Det som mangler eller er gammelt hentes fra Kassalapp via serverfunksjonen.
+    //    Kassalapp tillater 60 oppslag i minuttet, så store lister hentes i omganger.
+    let ko = alle.filter((n) => force || !prisCache.get(n) || (prisCache.get(n).v || 0) < PRIS_VERSJON
       || Date.now() - Date.parse(prisCache.get(n).hentet) > MAKS_ALDER);
-    for (let i = 0; i < gamle.length; i += 20) {
-      const svar = await callFunction('priser', { navn: gamle.slice(i, i + 20), force });
+    const totalt = ko.length;
+    let runder = 0;
+    while (ko.length && runder < 12) {
+      runder++;
+      prisStatus.fremdrift = { ferdig: totalt - ko.length, totalt, venter: false }; prisVarsle();
+      const bolk = ko.slice(0, 12);
+      const svar = await callFunction('priser', { navn: bolk, force });
       for (const [k, v] of Object.entries(svar.resultater || {})) prisCache.set(k, v);
       if (svar.feil?.length) prisStatus.feil = svar.feil[0].replace(/^[^:]+:\s*/, '');
+      const rest = new Set(svar.gjenstaar || []);
+      ko = [...ko.slice(12), ...bolk.filter((n) => rest.has(n))];
       prisVarsle();
+      if (rest.size && ko.length) {
+        // Grensen per minutt er nådd: vent og fortsett
+        prisStatus.fremdrift = { ferdig: totalt - ko.length, totalt, venter: true }; prisVarsle();
+        await vent(45_000);
+      }
     }
   } catch (e) {
     prisStatus.feil = e.message;
   } finally {
+    prisStatus.fremdrift = null;
     prisStatus.laster--; prisVarsle();
   }
 }
@@ -231,6 +254,7 @@ export function usePriser(navnListe) {
     pris: (navn) => prisCache.get(sokeord(navn)),
     laster: prisStatus.laster > 0,
     feil: prisStatus.feil,
+    fremdrift: prisStatus.fremdrift,
     oppdater: () => hentPriser(nokkel.split('|').filter(Boolean), true),
   };
 }

@@ -199,3 +199,4 @@ Oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/f
 - **Rettferdig sammenligning:** når pakningene er ulike store, sammenlignes og vises kilo-/literpris (f.eks. «KIWI 98,75/kg»), ellers hyllepris.
 - **Anbefalt butikk** øverst i handlelisten: billigste butikk for hele listen, eller to butikker hvis det sparer minst 15 kr / 5 %. Trykk på kortet for å se hvilke varer som kjøpes hvor.
 - **Samme vare i alle kjeder:** finnes den mest relevante varen (samme strekkode/EAN) i minst tre kjeder, sammenlignes akkurat den, så prisnivået blir rettferdig (f.eks. Gilde Kjøttdeig 400 g i alle). Kjeder som ikke har varen vises som «har ikke akkurat denne varen» med sitt nærmeste alternativ.
+- **Grense hos Kassalapp:** gratisnivået tillater 60 oppslag i minuttet. Funksjonen holder seg på 50 og henter store lister i omganger (appen viser «Henter priser 12 av 35 …» og fortsetter av seg selv). Utvidede søk og ekstra oppslag brukes bare når det trengs.
