@@ -143,7 +143,43 @@ const FYLLORD = new Set(["og", "med", "i", "til", "av", "en", "ett", "ei", "for"
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const normaliser = (s: string) => (s || "").toLowerCase().normalize("NFC").replace(/\s+/g, " ").trim();
 
-function varianter(o: string) {
+
+// ---------- Relevans: finne riktig vare, ikke bare billigste ----------
+// Norske sammensatte ord har hovedordet sist. Søkeordet passer derfor best som eget ord («Fløte»)
+// eller sist i et ord («Kremfløte»), og dårligst først i et ord («Fløtesaus», «Melkesjokolade»).
+const BOYNING = "(?:er|r|ene|ne|en|e|et|a)?";
+const TREFF_HEL = 3, TREFF_SIST = 2, TREFF_FORST = 1;
+
+// Ord som betyr at produktet er noe annet enn råvaren (med mindre søket selv inneholder ordet)
+const STOY = [
+  "saus", "sauce", "pudding", "dressing", "dip", "chips", "smoothie", "suppe", "gryte", "pålegg", "snacks",
+  "kake", "kaker", "mix", "miks", "krydder", "krydderblanding", "marinade", "mysost", "prim", "topping", "pulver",
+  "drikk", "juice", "nektar", "sjokolade", "godteri", "yoghurt", "is", "iskrem", "kjeks", "bar", "barer", "puré",
+  "barnemat", "grøt", "måneder", "mnd", "hund", "hunde", "katt", "katte", "valp", "dyrefôr", "fôr", "godbit", "godbiter",
+  "shampoo", "såpe", "lotion", "krem", "deodorant", "vaskemiddel", "duft", "lys", "te",
+];
+const BABYMERKER = ["ella", "ellas", "småfolk", "hipp", "semper", "holle", "nestle", "piccolo", "organix"];
+
+// Vanlige varer der det generelle ordet ofte står først i andre produkter. Søker også på disse.
+const UTVID: Record<string, string[]> = {
+  "fløte": ["kremfløte", "matfløte"],
+  "melk": ["lettmelk", "helmelk"],
+  "rømme": ["lettrømme", "seterrømme"],
+  "ost": ["norvegia", "jarlsberg", "hvitost"],
+  "smør": ["meierismør"],
+  "brød": ["grovbrød"],
+  "potet": ["poteter"],
+  "poteter": ["potet"],
+  "løk": ["gul løk"],
+  "kylling": ["kyllingfilet"],
+  "tomat": ["tomater"],
+  "tomater": ["tomat"],
+  "egg": ["frittgående egg"],
+};
+
+const ordI = (s: string) => normaliser(s).split(/[^a-z0-9æøåéèäöü]+/).filter(Boolean);
+
+function variantRegex(o: string) {
   const v = new Set([o]);
   if (o.length > 4 && o.endsWith("ene")) { v.add(o.slice(0, -3)); v.add(o.slice(0, -2)); }
   if (o.length > 4 && o.endsWith("er")) { v.add(o.slice(0, -2)); v.add(o.slice(0, -1)); }
@@ -151,24 +187,54 @@ function varianter(o: string) {
   return [...v].filter((x) => x.length >= 2).map(escape).join("|");
 }
 
-// Gir poeng for hvor godt et produktnavn passer et varenavn (0 = ikke treff).
-// Norske sammensatte ord har hovedordet sist: «melk» treffer «Lettmelk», ikke «Melkesjokolade».
-export function lagTreffer(varenavn: string) {
-  const ord = normaliser(varenavn).split(/[^a-z0-9æøåéèäöü]+/).filter((o) => o.length >= 2 && !FYLLORD.has(o));
-  if (!ord.length) return () => 0;
-  const reg = ord.map((o) => (o.length >= 5
-    ? new RegExp(`(${varianter(o)})`)
-    : new RegExp(`(${varianter(o)})(?:er|r|ene|ne|en|e)?(?![${BOKSTAV}])`)));
-  const hode = reg[reg.length - 1];
-  const start = new RegExp(`^(${varianter(ord[ord.length - 1])})`);
-  return (produktnavn: string) => {
-    const t = normaliser(produktnavn);
-    const treff = reg.filter((r) => r.test(t)).length;
-    const hodeTreff = hode.test(t);
-    // Godta når hovedordet treffer, eller når alle de andre ordene treffer («Norvegia ost» → «Norvegia 26 % 1 kg»)
-    if (!hodeTreff && !(reg.length > 1 && treff === reg.length - 1)) return 0;
-    return treff + (start.test(t) ? 0.5 : 0);
+// Hvor godt ett søkeord passer ett ord i produktnavnet (0–3)
+function ordTreff(sokeord: string) {
+  const v = variantRegex(sokeord);
+  const hel = new RegExp(`^(?:${v})${BOYNING}$`);
+  const sist = new RegExp(`^[${BOKSTAV}]{2,}(?:${v})${BOYNING}$`);
+  const inni = new RegExp(`(?:${v})`);
+  return (ord: string) => {
+    if (hel.test(ord)) return TREFF_HEL;
+    if (sist.test(ord)) return TREFF_SIST;
+    if (sokeord.length >= 4 && inni.test(ord)) return TREFF_FORST;
+    return 0;
   };
+}
+
+type Vurdering = { poeng: number; hode: number; stoy: boolean };
+
+// Lager en vurdering av et produkt for ett eller flere søk (varenavn + utvidelser)
+export function lagVurdering(soker: string[]) {
+  const sett = soker.map((s) => ordI(s).filter((o) => o.length >= 2 && !FYLLORD.has(o))).filter((o) => o.length);
+  const iSok = new Set(sett.flat());
+  const regler = sett.map((ord) => ({ ord, test: ord.map(ordTreff) }));
+  return (navn: string): Vurdering => {
+    const tokens = ordI(navn);
+    let best: Vurdering = { poeng: 0, hode: 0, stoy: false };
+    for (const r of regler) {
+      const per = r.test.map((t) => Math.max(0, ...tokens.map(t)));
+      const hode = per[per.length - 1];
+      const andre = per.slice(0, -1);
+      // Godta når hovedordet treffer, eller når alle de andre ordene treffer («Norvegia ost» → «Norvegia 26 % 1 kg»)
+      if (!hode && !(andre.length && andre.every((x) => x >= TREFF_SIST))) continue;
+      const ekstra = Math.max(0, tokens.filter((t) => !/^\d/.test(t)).length - r.ord.length);
+      const start = tokens.length && r.test[r.test.length - 1](tokens[0]) === TREFF_HEL ? 1 : 0;
+      const poeng = hode * 10 + andre.reduce((s, x) => s + x * 3, 0) + start - Math.min(ekstra, 6) * 0.4;
+      if (poeng > best.poeng) best = { poeng, hode, stoy: false };
+    }
+    if (best.poeng > 0) {
+      const baby = /\b\d+\s*(?:mnd|måneder|mån)\b/.test(normaliser(navn)) || tokens.some((t) => BABYMERKER.includes(t));
+      const stoy = tokens.some((t) => !iSok.has(t) && STOY.some((n) => t === n || (t.length > n.length + 2 && t.endsWith(n) && !iSok.has(n))));
+      best.stoy = baby || stoy;
+    }
+    return best;
+  };
+}
+
+// Kategorinavnene et produkt ligger i (Kassalapp: liste med {name, depth})
+function kategorier(p: any): string[] {
+  const k = Array.isArray(p.category) ? p.category : p.category ? [p.category] : [];
+  return k.map((c: any) => (typeof c === "string" ? c : c?.name)).filter(Boolean).map((n: string) => n.toLowerCase());
 }
 
 // ---------- Kassalapp ----------
@@ -192,7 +258,7 @@ async function kassal(path: string, params: Record<string, string | number | boo
 
 const ENHET: Record<string, string> = { g: "kg", kg: "kg", hg: "kg", ml: "l", cl: "l", dl: "l", l: "l", stk: "stk" };
 
-function tilTreff(p: any, poeng: number) {
+function tilTreff(p: any, v: Vurdering) {
   const pris = Number(p.current_price);
   const historikk = (p.price_history || [])
     .filter((h: any) => h?.price && h?.date && Date.now() - Date.parse(h.date) < 35 * 86400_000)
@@ -207,11 +273,17 @@ function tilTreff(p: any, poeng: number) {
     pris,
     enhetspris: p.current_unit_price != null ? Number(p.current_unit_price) : null,
     enhet: ENHET[(p.weight_unit || "").toLowerCase()] || "",
+    mengde: p.weight != null ? Number(p.weight) : null,
+    mengdeEnhet: (p.weight_unit || "").toLowerCase(),
     forpris: hoyest && hoyest > pris * 1.05 ? hoyest : null, // prisfall siste 5 uker
     bilde: p.image || "",
     url: p.url || "",
     oppdatert: p.updated_at || null,
-    poeng,
+    poeng: Math.round(v.poeng * 10) / 10,
+    _kat: kategorier(p),
+    _hode: v.hode,
+    _stoy: v.stoy,
+    _id: p.id ?? `${p.ean}-${p.store?.code}`,
   };
 }
 
@@ -221,22 +293,59 @@ function billigere(a: any, b: any) {
   return a.pris - b.pris;
 }
 
-async function hentPris(sok: string) {
-  const svar = await kassal("/products", { search: sok, size: 100 });
-  const poeng = lagTreffer(sok);
-  const relevante = (svar.data || [])
+export function velgTreff(sok: string, produkter: any[]) {
+  const vurder = lagVurdering([sok, ...(UTVID[normaliser(sok)] || [])]);
+  let kand = produkter
     .filter((p: any) => p.current_price != null && p.store?.code)
-    .map((p: any) => tilTreff(p, poeng(`${p.name} ${p.brand || ""}`)))
+    .map((p: any) => tilTreff(p, vurder(`${p.name} ${p.brand || ""}`)))
     .filter((t: any) => t.poeng > 0);
-  // Beste treff per kjede: høyest poeng, deretter billigst
-  const perKjede = new Map<string, any>();
-  for (const t of relevante) {
-    const f = perKjede.get(t.kode);
-    if (!f || t.poeng > f.poeng || (t.poeng === f.poeng && billigere(t, f) < 0)) perKjede.set(t.kode, t);
+
+  // 1) Fjern «noe annet» (saus, babymat, dyremat …) når det finnes vanlige varer
+  if (kand.some((t) => !t._stoy)) kand = kand.filter((t) => !t._stoy);
+  // 2) Når ordet finnes som eget ord / sist i ord, dropp treff der det bare står først («Fløtesaus»)
+  if (kand.filter((t) => t._hode >= TREFF_SIST).length >= 2) kand = kand.filter((t) => t._hode !== TREFF_FORST);
+  // 3) Samme kategori som flertallet av de beste treffene (f.eks. «Frukt» for bananer, ikke «Barnemat»)
+  const topp = Math.max(0, ...kand.map((t) => t.poeng));
+  const beste = kand.filter((t) => t.poeng >= topp - 3);
+  const telling = new Map<string, number>();
+  for (const t of beste) for (const k of new Set(t._kat as string[])) telling.set(k, (telling.get(k) || 0) + 1);
+  const dominerende = [...telling.entries()].filter(([, n]) => beste.length >= 3 && n / beste.length >= 0.6).sort((a, b) => b[1] - a[1]);
+  if (dominerende.length) {
+    // Den mest spesifikke kategorien som flertallet deler
+    const k = dominerende[dominerende.length - 1][0];
+    const filtrert = kand.filter((t) => !t._kat.length || t._kat.includes(k));
+    if (new Set(filtrert.map((t) => t.kode)).size >= 2) kand = filtrert;
   }
-  const treff = [...perKjede.values()].sort(billigere);
-  const alle = relevante.sort((a: any, b: any) => (b.poeng - a.poeng) || billigere(a, b)).slice(0, 60);
-  return { sok, treff, alle, hentet: new Date().toISOString() };
+
+  // Beste treff per kjede: høyest poeng (riktigst vare), deretter billigst
+  const perKjede = new Map<string, any>();
+  for (const t of kand) {
+    const f = perKjede.get(t.kode);
+    if (!f || t.poeng > f.poeng + 1 || (Math.abs(t.poeng - f.poeng) <= 1 && billigere(t, f) < 0)) perKjede.set(t.kode, t);
+  }
+  const rens = ({ _kat, _hode, _stoy, _id, ...t }: any) => t;
+  const treff = [...perKjede.values()].sort(billigere).map(rens);
+  // Sammenlign på kilo-/literpris bare når pakningene er ulike (ellers på hyllepris)
+  const mengder = treff.map((t) => t.mengde).filter((m) => m);
+  const ulik = mengder.length >= 2 && Math.max(...mengder) / Math.min(...mengder) > 1.25;
+  const sammeEnhet = treff.every((t) => t.enhetspris && t.enhet && t.enhet === treff[0].enhet);
+  const basis = ulik && sammeEnhet ? "enhet" : "pris";
+  if (basis === "pris") treff.sort((a, b) => a.pris - b.pris);
+  const alle = kand.sort((a: any, b: any) => (b.poeng - a.poeng) || billigere(a, b)).slice(0, 60).map(rens);
+  return { treff, alle, basis };
+}
+
+const PRIS_VERSJON = 2; // øk når utvelgelsen endres, så gamle resultater hentes på nytt
+
+async function hentPris(sok: string) {
+  const soker = [sok, ...(UTVID[normaliser(sok)] || [])];
+  const produkter = new Map<string, any>();
+  for (const q of soker) {
+    const svar = await kassal("/products", { search: q, size: 100 });
+    for (const p of svar.data || []) produkter.set(String(p.id ?? `${p.ean}-${p.store?.code}-${p.name}`), p);
+  }
+  const { treff, alle, basis } = velgTreff(sok, [...produkter.values()]);
+  return { sok, treff, alle, basis, v: PRIS_VERSJON, hentet: new Date().toISOString() };
 }
 
 async function priser(navnListe: string[], force: boolean) {
@@ -245,7 +354,8 @@ async function priser(navnListe: string[], force: boolean) {
   const { data: lagret } = await admin.from("pris_cache").select("sok, data, hentet").in("sok", sokeord);
   const resultater: Record<string, any> = {};
   for (const r of lagret ?? []) resultater[r.sok] = r.data;
-  const gamle = sokeord.filter((s) => force || !resultater[s] || Date.now() - Date.parse(resultater[s].hentet) > MAKS_ALDER);
+  const gamle = sokeord.filter((s) => force || !resultater[s] || (resultater[s].v || 0) < PRIS_VERSJON
+    || Date.now() - Date.parse(resultater[s].hentet) > MAKS_ALDER);
 
   const feil: string[] = [];
   let i = 0;

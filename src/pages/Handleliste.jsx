@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
 import {
   useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer,
-  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett,
+  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett, visPris, anbefaling,
 } from '../data.js';
 import KunInnsyn from '../components/KunInnsyn.jsx';
 import { butikk } from '../config.js';
@@ -101,6 +101,8 @@ export default function Handleliste({ liste }) {
       </form>
       )}
 
+      <Anbefaling varer={aktive.map((v) => ({ vare: v, treff: prisFor(v) }))} />
+
       {feil && <p className="feil">{feil}</p>}
       {varer == null && <div className="spinner" />}
       {varer && !aktive.length && (
@@ -163,7 +165,7 @@ function VareRad({ v, tilbud, medlemmer, kan = true, onVeksle, onApne }) {
             <Icon name="tag" size={12} />
             {topp.map((t, i) => (
               <span key={t.kode} className={t.forpris ? 'prisbit prisbit-fall' : i === 0 ? 'prisbit prisbit-best' : 'prisbit'}>
-                {butikk(t.kode, t.kjede).navn} {kr(t.pris)}
+                {butikk(t.kode, t.kjede).navn} {kr(visPris(t).verdi)}{visPris(t).enhet ? `/${visPris(t).enhet}` : ''}
               </span>
             ))}
             {prisfall && <span className="prisbit-fall-tekst">prisfall</span>}
@@ -366,5 +368,53 @@ function LagredeLister({ open, onClose, aktive, setVarer, lagrede }) {
         ))}
       </ul>
     </Sheet>
+  );
+}
+
+// Anbefalt butikk øverst i handlelisten: én butikk, eller to hvis det sparer noe
+function Anbefaling({ varer }) {
+  const [apen, setApen] = useState(false);
+  const a = useMemo(() => anbefaling(varer), [varer]);
+  if (!a) return null;
+  const n = (k) => butikk(k, a.navn[k]).navn;
+  const { beste, to } = a;
+  const liste = (l) => l.map((x) => x.vare.navn).join(', ');
+  return (
+    <section className="card anbefaling">
+      <button type="button" className="anbefaling-topp" onClick={() => setApen(!apen)} aria-expanded={apen}>
+        <span className="anbefaling-ikon">🏪</span>
+        <span className="vokse">
+          <span className="anbefaling-tittel">
+            {to ? <>Billigst: <b>{n(to.sett[0])}</b> + <b>{n(to.sett[1])}</b></> : <>Billigst: <b>{n(beste.sett[0])}</b></>}
+          </span>
+          <span className="muted liten">
+            {to
+              ? `ca. ${Math.round(to.sum)} kr · sparer ca. ${Math.round(a.spart)} kr mot bare ${n(beste.sett[0])}`
+              : `ca. ${Math.round(beste.sum)} kr · ${beste.dekket} av ${a.antall} varer der`}
+          </span>
+        </span>
+        <span className={apen ? 'roter' : ''}><Icon name="chevronD" size={18} /></span>
+      </button>
+      {apen && (
+        <div className="anbefaling-detaljer">
+          {(to ? to.sett : beste.sett).map((k) => {
+            const l = (to || beste).fordeling[k];
+            return (
+              <p key={k}>
+                <span className="kjedemerke" style={{ background: butikk(k).farge }}>{n(k)}</span>{' '}
+                <span className="muted liten">{l.length} varer · ca. {Math.round(l.reduce((s, x) => s + Math.min(...x.treff.filter((t) => t.kode === k).map((t) => t.pris)), 0))} kr</span><br />
+                <span className="liten">{liste(l)}</span>
+              </p>
+            );
+          })}
+          {(to || beste).andre.length > 0 && (
+            <p><span className="muted liten">Finnes ikke der ({(to || beste).andre.length}):</span> <span className="liten">{liste((to || beste).andre)}</span></p>
+          )}
+          {to && <p className="muted liten">Alt i {n(beste.sett[0])}: ca. {Math.round(beste.sum)} kr ({beste.dekket} av {a.antall} varer).</p>}
+          {a.utenPris > 0 && <p className="muted liten">{a.utenPris} {a.utenPris === 1 ? 'vare' : 'varer'} uten pris er ikke med.</p>}
+          <p className="muted liten">Basert på dagens priser i nettbutikkene. Butikken kan ha andre priser og tilbud.</p>
+        </div>
+      )}
+    </section>
   );
 }

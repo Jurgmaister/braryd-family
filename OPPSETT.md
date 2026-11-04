@@ -188,3 +188,13 @@ Under «Hvem» kan du nå velge flere. Alle får varsel når de får oppgaven, o
 Kjør `supabase/familie4.sql` i **SQL Editor → New query → Run** (etter `familie3.sql`), og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
 
 Under «Hvem gjelder det» kan du velge flere personer, eller «Hele familien». De som legges til får push med en gang, og alle får påminnelsene. Aktiviteten vises i kalenderen til hver av dem (filteret øverst), med en fargestrek per person.
+
+---
+
+## Riktigere varer og anbefalt butikk
+
+Oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**). Ingen SQL denne gangen. Prisene hentes på nytt automatisk første gang.
+
+- **Riktig vare før billigste:** søkeordet må stå som eget ord eller sist i et ord («Kremfløte» for fløte), ikke først («Fløtesaus»). Babymat, sauser, snacks, dyremat og lignende tas bort når det finnes vanlige varer, og varer i en annen kategori enn flertallet (f.eks. «Barnemat» når du søker bananer) filtreres bort. Noen vanlige ord søkes bredere (fløte → kremfløte/matfløte, melk → lett-/helmelk, ost → Norvegia/Jarlsberg/hvitost).
+- **Rettferdig sammenligning:** når pakningene er ulike store, sammenlignes og vises kilo-/literpris (f.eks. «KIWI 98,75/kg»), ellers hyllepris.
+- **Anbefalt butikk** øverst i handlelisten: billigste butikk for hele listen, eller to butikker hvis det sparer minst 15 kr / 5 %. Trykk på kortet for å se hvilke varer som kjøpes hvor.

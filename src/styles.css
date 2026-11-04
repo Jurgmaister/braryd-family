@@ -397,3 +397,11 @@ fieldset.innsyn .chip:not(.chip-on), fieldset.innsyn .ukedag:not(.ukedag-on) { o
 
 .hvem-stabel { display: inline-flex; flex-shrink: 0; }
 .hvem-stabel .hvem + .hvem { margin-left: -8px; box-shadow: 0 0 0 2px var(--card); }
+
+/* ---------- Anbefalt butikk ---------- */
+.anbefaling { padding: 0; overflow: hidden; }
+.anbefaling-topp { width: 100%; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 12px 14px; cursor: pointer; }
+.anbefaling-ikon { font-size: 22px; }
+.anbefaling-tittel { display: block; font-size: 15px; }
+.anbefaling-detaljer { padding: 0 14px 12px 48px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.anbefaling-detaljer .kjedemerke { display: inline-block; }
