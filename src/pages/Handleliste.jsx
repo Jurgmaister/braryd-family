@@ -141,7 +141,7 @@ export default function Handleliste({ liste }) {
         </section>
       )}
 
-      <VareSkjema kan={kan} vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []}
+      <VareSkjema kan={kan} vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []} prisData={redigerer ? pris(redigerer.navn) : null}
         onClose={() => setRedigerer(null)} setVarer={setVarer} medlemmer={medlemmer} />
       <LagreListe open={lagreApen} onClose={() => setLagreApen(false)} varer={varer || []} lagrede={lagrede || []} aktivId={aktivListe?.id || null} />
       <LagredeLister open={listerApen} onClose={() => setListerApen(false)} aktive={aktive} setVarer={setVarer} lagrede={lagrede} />
@@ -181,7 +181,7 @@ function VareRad({ v, tilbud, medlemmer, kan = true, onVeksle, onApne }) {
   );
 }
 
-function VareSkjema({ kan, vare, kategorier, tilbud, onClose, setVarer, medlemmer }) {
+function VareSkjema({ kan, vare, kategorier, tilbud, prisData, onClose, setVarer, medlemmer }) {
   const [f, setF] = useState({});
   useEffect(() => { setF(vare ? { navn: vare.navn, antall: vare.antall, kategori: vare.kategori } : {}); }, [vare]);
   if (!vare) return null;
@@ -233,6 +233,7 @@ function VareSkjema({ kan, vare, kategorier, tilbud, onClose, setVarer, medlemme
         {tilbud.length > 0 && (
           <div>
             <p className="feltnavn">Pris i dag</p>
+            {prisData?.referanse && <p className="muted liten sammenligner">Sammenligner samme vare i alle kjedene: <b>{prisData.referanse.navn}</b></p>}
             <ul className="minitilbud">
               {tilbud.slice(0, 8).map((t) => (
                 <li key={t.kode}>
@@ -245,6 +246,9 @@ function VareSkjema({ kan, vare, kategorier, tilbud, onClose, setVarer, medlemme
                 </li>
               ))}
             </ul>
+            {prisData?.andre?.length > 0 && (
+              <p className="muted liten">Har ikke akkurat denne varen: {prisData.andre.map((t) => `${butikk(t.kode, t.kjede).navn} (${t.navn}, ${kr(t.pris)})`).join(' · ')}</p>
+            )}
           </div>
         )}
         {hvem && <p className="muted liten">Lagt til av {hvem}{vare.kilde === 'siri' ? ' med Siri' : vare.kilde === 'middag' ? ' fra en middag' : ''}.</p>}

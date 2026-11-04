@@ -273,6 +273,7 @@ function tilTreff(p: any, v: Vurdering) {
     pris,
     enhetspris: p.current_unit_price != null ? Number(p.current_unit_price) : null,
     enhet: ENHET[(p.weight_unit || "").toLowerCase()] || "",
+    ean: p.ean ? String(p.ean) : null,
     mengde: p.weight != null ? Number(p.weight) : null,
     mengdeEnhet: (p.weight_unit || "").toLowerCase(),
     forpris: hoyest && hoyest > pris * 1.05 ? hoyest : null, // prisfall siste 5 uker
@@ -335,7 +336,43 @@ export function velgTreff(sok: string, produkter: any[]) {
   return { treff, alle, basis };
 }
 
-const PRIS_VERSJON = 2; // øk når utvelgelsen endres, så gamle resultater hentes på nytt
+const PRIS_VERSJON = 3; // øk når utvelgelsen endres, så gamle resultater hentes på nytt
+
+// Velger «referansevaren»: samme vare (EAN) som finnes i flest kjeder blant de mest relevante treffene.
+// Da sammenlignes like varer, ikke en liten pakke i én butikk mot en storpakke i en annen.
+function velgReferanse(alle: any[]) {
+  if (!alle.length) return null;
+  const topp = Math.max(...alle.map((t) => t.poeng));
+  const grupper = new Map<string, any[]>();
+  for (const t of alle) {
+    if (!t.ean || t.poeng < topp - 2) continue;
+    if (!grupper.has(t.ean)) grupper.set(t.ean, []);
+    grupper.get(t.ean)!.push(t);
+  }
+  const rangert = [...grupper.entries()]
+    .map(([ean, l]) => ({ ean, kjeder: new Set(l.map((t) => t.kode)).size, poeng: Math.max(...l.map((t) => t.poeng)), navn: l[0].navn }))
+    .sort((a, b) => (b.kjeder - a.kjeder) || (b.poeng - a.poeng));
+  return rangert[0] || null;
+}
+
+// Kassalapp: samme EAN i alle kjeder
+async function prisPerKjede(ean: string, sok: string) {
+  const svar = await kassal(`/products/ean/${encodeURIComponent(ean)}`, {});
+  const vurder = lagVurdering([sok, ...(UTVID[normaliser(sok)] || [])]);
+  const ut: any[] = [];
+  for (const p of svar?.data?.products || []) {
+    const cp = Array.isArray(p.current_price) ? p.current_price[0] : p.current_price;
+    const pris = typeof cp === "number" ? cp : cp?.price;
+    if (pris == null || !p.store?.code) continue;
+    const t = tilTreff({ ...p, ean, current_price: pris, current_unit_price: typeof cp === "object" ? cp?.unit_price : p.current_unit_price }, vurder(`${p.name} ${p.brand || ""}`));
+    const { _kat, _hode, _stoy, _id, ...ren } = t;
+    ut.push({ ...ren, samme: true });
+  }
+  // Én pris per kjede (billigste hvis kjeden har flere)
+  const perKjede = new Map<string, any>();
+  for (const t of ut) if (!perKjede.has(t.kode) || t.pris < perKjede.get(t.kode).pris) perKjede.set(t.kode, t);
+  return [...perKjede.values()].sort((a, b) => a.pris - b.pris);
+}
 
 async function hentPris(sok: string) {
   const soker = [sok, ...(UTVID[normaliser(sok)] || [])];
@@ -344,8 +381,26 @@ async function hentPris(sok: string) {
     const svar = await kassal("/products", { search: q, size: 100 });
     for (const p of svar.data || []) produkter.set(String(p.id ?? `${p.ean}-${p.store?.code}-${p.name}`), p);
   }
-  const { treff, alle, basis } = velgTreff(sok, [...produkter.values()]);
-  return { sok, treff, alle, basis, v: PRIS_VERSJON, hentet: new Date().toISOString() };
+  const valgt = velgTreff(sok, [...produkter.values()]);
+  let { treff, basis } = valgt;
+  let referanse = null;
+
+  // Finnes samme vare i minst tre kjeder? Da sammenlignes den, og de andre kjedenes beste treff legges som alternativ.
+  const ref = velgReferanse(valgt.alle);
+  if (ref && ref.kjeder >= 2) {
+    try {
+      const like = await prisPerKjede(ref.ean, sok);
+      if (like.length >= 3) {
+        referanse = { ean: ref.ean, navn: like[0].navn };
+        const har = new Set(like.map((t) => t.kode));
+        const andre = treff.filter((t: any) => !har.has(t.kode)).map((t: any) => ({ ...t, samme: false }));
+        treff = like;
+        basis = "pris";
+        return { sok, treff, andre, alle: valgt.alle, basis, referanse, v: PRIS_VERSJON, hentet: new Date().toISOString() };
+      }
+    } catch { /* bruk vanlig sammenligning */ }
+  }
+  return { sok, treff, andre: [], alle: valgt.alle, basis, referanse, v: PRIS_VERSJON, hentet: new Date().toISOString() };
 }
 
 async function priser(navnListe: string[], force: boolean) {

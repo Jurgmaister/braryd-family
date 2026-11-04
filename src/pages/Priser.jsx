@@ -88,7 +88,7 @@ export default function Priser({ liste }) {
 
           {perVare.map(({ vare, data, treff }) => (
             <section key={vare.id} className="gruppe">
-              <h2 className="gruppe-tittel">{vare.navn}</h2>
+              <h2 className="gruppe-tittel">{vare.navn}{data?.referanse && <span className="muted liten sammenligner-kort"> · samme vare: {data.referanse.navn}</span>}</h2>
               {!data && <p className="muted liten innrykk">{vare.navn.trim().length < 3 ? 'For kort navn til å søke' : laster ? 'Henter …' : 'Ikke hentet ennå'}</p>}
               {data && !treff.length && <p className="muted liten innrykk">Fant ingen pris. Prøv et mer vanlig navn, f.eks. «lettmelk» i stedet for «melk lett».</p>}
               {treff.length > 0 && (

@@ -405,3 +405,5 @@ fieldset.innsyn .chip:not(.chip-on), fieldset.innsyn .ukedag:not(.ukedag-on) { o
 .anbefaling-tittel { display: block; font-size: 15px; }
 .anbefaling-detaljer { padding: 0 14px 12px 48px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
 .anbefaling-detaljer .kjedemerke { display: inline-block; }
+.sammenligner { margin: -2px 0 8px; }
+.sammenligner-kort { font-weight: 500; }

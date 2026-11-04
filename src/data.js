@@ -182,7 +182,7 @@ const prisLytt = new Set();
 const prisVarsle = () => prisLytt.forEach((f) => f());
 const prisStatus = { laster: 0, feil: '' };
 const MAKS_ALDER = 12 * 3600_000;
-const PRIS_VERSJON = 2; // samme som i serverfunksjonen
+const PRIS_VERSJON = 3; // samme som i serverfunksjonen
 const sokeord = (navn) => normaliserNavn(navn);
 function normaliserNavn(s) { return (s || '').toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim(); }
 
