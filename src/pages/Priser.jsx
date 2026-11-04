@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer, useRett } from '../data.js';
+import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer, useRett, aktiveButikker, anbefaling } from '../data.js';
 import { butikk } from '../config.js';
 import { kr, tidSiden } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
@@ -15,26 +15,14 @@ export default function Priser({ liste }) {
   const navn = aktive.map((v) => v.navn);
   const { pris, laster, feil, oppdater, fremdrift } = usePriser(navn);
   const inn = useInnstillinger();
-  const butikker = inn?.butikker;
+  const butikker = aktiveButikker(inn);
   const [modus, setModus] = useState('liste');
   const [apen, setApen] = useState(null);
 
   const perVare = aktive.map((v) => ({ vare: v, data: pris(v.navn), treff: treffI(pris(v.navn), butikker) }));
   const sistHentet = perVare.map((x) => x.data?.hentet).filter(Boolean).sort()[0];
 
-  // Hva koster hele handlelisten i hver kjede?
-  const totalt = (() => {
-    const sum = new Map();
-    for (const { treff } of perVare) {
-      for (const t of treff) {
-        const s = sum.get(t.kode) || { kode: t.kode, kjede: t.kjede, belop: 0, antall: 0 };
-        s.belop += t.pris; s.antall += 1;
-        sum.set(t.kode, s);
-      }
-    }
-    const medPris = perVare.filter((x) => x.treff.length).length;
-    return { rader: [...sum.values()].sort((a, b) => (b.antall - a.antall) || (a.belop - b.belop)).slice(0, 3), medPris };
-  })();
+  const forslag = anbefaling(perVare);
 
   const prisfall = perVare.flatMap(({ vare, treff }) => treff.filter((t) => t.forpris).map((t) => ({ vare, t })));
 
@@ -63,19 +51,29 @@ export default function Priser({ liste }) {
             </div>
           )}
 
-          {totalt.rader.length > 1 && (
+          {forslag?.en?.length > 1 && (
             <section className="card stack">
               <h2 className="h2">Hele listen i én butikk</h2>
               <ul className="totalliste">
-                {totalt.rader.map((r, i) => (
-                  <li key={r.kode}>
-                    <Kjedemerke kode={r.kode} navn={r.kjede} />
-                    <span className="muted liten vokse">{r.antall} av {totalt.medPris} varer</span>
-                    <span className={i === 0 ? 'pris' : 'pris pris-graa'}>{kr(r.belop)}</span>
+                {forslag.en.map((r, i) => (
+                  <li key={r.sett[0]}>
+                    <Kjedemerke kode={r.sett[0]} navn={forslag.navn[r.sett[0]]} />
+                    <span className={`muted liten vokse ${r.dekket < Math.ceil(forslag.antall * 0.7) ? 'fare-tekst' : ''}`}>{r.dekket === forslag.antall ? `alle ${forslag.antall} varer` : `${r.dekket} av ${forslag.antall} varer`}</span>
+                    <span className={i === 0 ? 'pris' : 'pris pris-graa'}>{Math.round(r.sum)} kr</span>
                   </li>
                 ))}
               </ul>
-              <p className="muted liten">Summen av billigste treff per vare. Varer uten pris i en kjede er ikke med.</p>
+              <p className="muted liten">Varer kjeden ikke har, er regnet med vanlig pris (median) i de andre kjedene, så summene kan sammenlignes. Kjeder som mangler mange varer står nederst.</p>
+            </section>
+          )}
+
+          {forslag?.parListe?.length > 0 && (
+            <section className="card stack">
+              <h2 className="h2">Billigst i to butikker</h2>
+              <ul className="parliste">
+                {forslag.parListe.map((p, i) => <ParRad key={p.sett.join('+')} p={p} forste={i === 0} beste={forslag.beste} navn={forslag.navn} />)}
+              </ul>
+              <p className="muted liten">Hver vare kjøpes der den er billigst av de to. Sparing er mot å handle alt i {forslag.navn[forslag.beste.sett[0]] ? <Kjedenavn kode={forslag.beste.sett[0]} navn={forslag.navn[forslag.beste.sett[0]]} /> : 'billigste butikk'} (ca. {Math.round(forslag.beste.sum)} kr).</p>
             </section>
           )}
 
@@ -95,7 +93,7 @@ export default function Priser({ liste }) {
               {data && !treff.length && <p className="muted liten innrykk">Fant ingen pris. Prøv et mer vanlig navn, f.eks. «lettmelk» i stedet for «melk lett».</p>}
               {treff.length > 0 && (
                 <ul className="card prisrader">
-                  {treff.slice(0, 3).map((t, i) => (
+                  {treff.map((t, i) => (
                     <li key={t.kode}>
                       <button type="button" className="prisrad" onClick={() => setApen(t)}>
                         <Kjedemerke kode={t.kode} navn={t.kjede} />
@@ -108,7 +106,6 @@ export default function Priser({ liste }) {
                       </button>
                     </li>
                   ))}
-                  {treff.length > 3 && <li className="muted liten flere">+ {treff.length - 3} kjeder til, dyrere</li>}
                 </ul>
               )}
             </section>
@@ -213,5 +210,34 @@ function ProduktSheet({ t, onClose }) {
         )}
       </div>
     </Sheet>
+  );
+}
+
+function Kjedenavn({ kode, navn }) { return butikk(kode, navn).navn; }
+
+function ParRad({ p, forste, beste, navn }) {
+  const [apen, setApen] = useState(false);
+  const spart = Math.round(beste.sum - p.sum);
+  return (
+    <li>
+      <button type="button" className="parrad" onClick={() => setApen(!apen)} aria-expanded={apen}>
+        <span className="vokse parrad-kjeder">
+          {p.sett.map((k) => <Kjedemerke key={k} kode={k} navn={navn[k]} />)}
+        </span>
+        <span className="parrad-tall">
+          <span className={forste ? 'pris' : 'pris pris-graa'}>{Math.round(p.sum)} kr</span>
+          {spart > 0 && <span className="muted liten">sparer {spart} kr</span>}
+        </span>
+        <span className={apen ? 'roter' : ''}><Icon name="chevronD" size={16} /></span>
+      </button>
+      {apen && (
+        <div className="pardetalj">
+          {p.sett.map((k) => (
+            <p key={k} className="liten"><b>{butikk(k, navn[k]).navn} ({p.fordeling[k].length}):</b> {p.fordeling[k].map((x) => x.vare.navn).join(', ') || '–'}</p>
+          ))}
+          {p.andre.length > 0 && <p className="liten muted">Ingen av dem: {p.andre.map((x) => x.vare.navn).join(', ')}</p>}
+        </div>
+      )}
+    </li>
   );
 }

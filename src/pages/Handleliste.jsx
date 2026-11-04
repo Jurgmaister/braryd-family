@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
 import {
   useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer,
-  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett, visPris, anbefaling,
+  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett, visPris, anbefaling, aktiveButikker,
 } from '../data.js';
 import KunInnsyn from '../components/KunInnsyn.jsx';
 import { butikk } from '../config.js';
@@ -41,7 +41,7 @@ export default function Handleliste({ liste }) {
   const { pris, fremdrift } = usePriser(aktive.map((v) => v.navn));
   const inn = useInnstillinger();
   const kan = useRett('handle');
-  const butikker = inn?.butikker;
+  const butikker = aktiveButikker(inn);
   const lagrede = useLagredeLister();
   const aktivId = aktivListeId(inn);
   const aktivListe = (lagrede || []).find((l) => l.id === aktivId) || null;
@@ -151,7 +151,7 @@ export default function Handleliste({ liste }) {
 }
 
 function VareRad({ v, tilbud, medlemmer, kan = true, onVeksle, onApne }) {
-  const topp = tilbud.slice(0, 3);
+  const topp = tilbud.slice(0, 5);
   const prisfall = topp.some((t) => t.forpris);
   const hvem = navnFor(medlemmer, v.lagt_til_av);
   return (
@@ -165,8 +165,9 @@ function VareRad({ v, tilbud, medlemmer, kan = true, onVeksle, onApne }) {
           <span className="prisrekke">
             <Icon name="tag" size={12} />
             {topp.map((t, i) => (
-              <span key={t.kode} className={t.forpris ? 'prisbit prisbit-fall' : i === 0 ? 'prisbit prisbit-best' : 'prisbit'}>
-                {butikk(t.kode, t.kjede).navn} {kr(visPris(t).verdi)}{visPris(t).enhet ? `/${visPris(t).enhet}` : ''}
+              <span key={t.kode} className={t.forpris ? 'prisbit prisbit-fall' : i === 0 ? 'prisbit prisbit-best' : 'prisbit'}
+                title={t.annen ? `Annen vare: ${t.navn}` : t.coopPris ? 'Coops nettpris' : t.navn}>
+                {butikk(t.kode, t.kjede).navn} {t.annen ? '≈' : ''}{kr(visPris(t).verdi)}{visPris(t).enhet ? `/${visPris(t).enhet}` : ''}
               </span>
             ))}
             {prisfall && <span className="prisbit-fall-tekst">prisfall</span>}

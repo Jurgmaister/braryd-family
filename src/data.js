@@ -266,25 +266,50 @@ export async function sokPris(q) {
   return data;
 }
 
-// Treff filtrert på valgte kjeder, billigst først (på hyllepris, eller kilo-/literpris når pakningene er ulike)
+// Coop-kjedene. Har Kassalapp ikke egne priser for f.eks. Obs, brukes Coops nettpris (merket «Coop-pris»).
+const COOP_KJEDER = ['COOP_OBS', 'COOP_EXTRA', 'COOP_MEGA', 'COOP_PRIX', 'COOP_MARKED'];
+const KJEDENAVN = { KIWI: 'KIWI', REMA_1000: 'REMA 1000', MENY_NO: 'MENY', SPAR_NO: 'SPAR', JOKER_NO: 'Joker', COOP_EXTRA: 'Extra', COOP_MEGA: 'Coop Mega', COOP_PRIX: 'Coop Prix', COOP_OBS: 'Obs', COOP_MARKED: 'Coop Marked', COOP_NO: 'Coop', BUNNPRIS: 'Bunnpris' };
+
+// Kjedene som gjelder: de som er valgt, og som har butikk innenfor radius (når det er sjekket)
+export function aktiveButikker(inn) {
+  const valgt = inn?.butikker || [];
+  const naer = inn?.butikker_naer;
+  if (!naer || !valgt.length) return valgt;
+  return valgt.filter((k) => naer[k]);
+}
+
+// Priser for valgte kjeder, billigst først. Samme vare der det finnes; ellers kjedens nærmeste alternativ (annen: true).
 export function treffI(data, butikker) {
   if (!data?.treff) return [];
-  const valgt = butikker?.length ? new Set(butikker) : null;
-  return data.treff.filter((t) => !valgt || valgt.has(t.kode)).map((t) => ({ ...t, basis: data.basis || 'pris' }))
-    .sort((a, b) => visPris(a).verdi - visPris(b).verdi);
+  const basis = data.basis || 'pris';
+  let alle = [...data.treff, ...(data.andre || []).map((t) => ({ ...t, annen: true }))];
+  const valgt = butikker?.length ? butikker : null;
+  if (valgt) {
+    const finnes = new Set(alle.map((t) => t.kode));
+    const coop = alle.find((t) => t.kode === 'COOP_NO');
+    for (const k of valgt) {
+      if (!finnes.has(k) && COOP_KJEDER.includes(k) && coop) alle.push({ ...coop, kode: k, kjede: KJEDENAVN[k] || k, coopPris: true });
+    }
+    alle = alle.filter((t) => valgt.includes(t.kode));
+  }
+  return alle.map((t) => ({ ...t, basis })).sort((a, b) => visPris(a).verdi - visPris(b).verdi);
 }
 
 // Prisen som vises og sammenlignes: kilo-/literpris når pakningene er ulike, ellers hyllepris
 export const visPris = (t) => (t.basis === 'enhet' && t.enhetspris && t.enhet ? { verdi: t.enhetspris, enhet: t.enhet } : { verdi: t.pris, enhet: '' });
 
 // Anbefalt butikk for handlelisten.
-// Kostnad for en butikk = sum av prisen der, og for varer den ikke har: billigste pris et annet sted.
+// Kostnad for en butikk = sum av prisen der, og for varer den ikke har: medianprisen i de andre kjedene
+// (nøytralt – en kjede som mangler mange varer skal ikke se billig ut).
 export function anbefaling(varer) {
   const medPris = varer.filter((v) => v.treff.length);
   if (medPris.length < 3) return null;
   const kjeder = [...new Set(medPris.flatMap((v) => v.treff.map((t) => t.kode)))];
   const navn = Object.fromEntries(medPris.flatMap((v) => v.treff.map((t) => [t.kode, t.kjede])));
-  const billigst = (v) => Math.min(...v.treff.map((t) => t.pris));
+  const median = (v) => {
+    const p = v.treff.map((t) => t.pris).sort((a, b) => a - b);
+    return p.length % 2 ? p[(p.length - 1) / 2] : (p[p.length / 2 - 1] + p[p.length / 2]) / 2;
+  };
   const prisI = (v, k) => v.treff.find((t) => t.kode === k)?.pris;
 
   const kostnad = (sett) => {
@@ -293,12 +318,14 @@ export function anbefaling(varer) {
     const andre = [];
     for (const v of medPris) {
       const valg = sett.map((k) => [k, prisI(v, k)]).filter(([, p]) => p != null).sort((a, b) => a[1] - b[1])[0];
-      if (valg) { sum += valg[1]; dekket++; fordeling[valg[0]].push(v); } else { sum += billigst(v); andre.push(v); }
+      if (valg) { sum += valg[1]; dekket++; fordeling[valg[0]].push(v); } else { sum += median(v); andre.push(v); }
     }
     return { sett, sum, dekket, fordeling, andre };
   };
 
-  const en = kjeder.map((k) => kostnad([k])).sort((a, b) => a.sum - b.sum);
+  // Kjeder som har minst 70 % av varene først (billigst øverst), deretter de som mangler mange
+  const nok = (e) => e.dekket >= Math.ceil(medPris.length * 0.7);
+  const en = kjeder.map((k) => kostnad([k])).sort((a, b) => (nok(b) - nok(a)) || (a.sum - b.sum));
   // Krev at én-butikk-forslaget har de fleste varene
   const maksDekket = Math.max(...en.map((e) => e.dekket));
   const beste = en.find((e) => e.dekket >= maksDekket - 2) || en[0];
@@ -310,10 +337,14 @@ export function anbefaling(varer) {
       if (!to || k.sum < to.sum) to = k;
     }
   }
+  // De beste kombinasjonene av to butikker (for prissiden)
+  const parListe = [];
+  for (let i = 0; i < kjeder.length; i++) for (let j = i + 1; j < kjeder.length; j++) parListe.push(kostnad([kjeder[i], kjeder[j]]));
+  parListe.sort((a, b) => a.sum - b.sum);
   const spart = to ? beste.sum - to.sum : 0;
   // Vis «del på to» når det sparer minst 15 kr eller 5 %, og hver butikk får minst to varer
   const visTo = to && (spart >= 15 || spart / beste.sum >= 0.05) && Object.values(to.fordeling).every((l) => l.length >= 2);
-  return { beste, to: visTo ? to : null, spart, navn, antall: medPris.length, utenPris: varer.length - medPris.length };
+  return { beste, en, to: visTo ? to : null, parListe: parListe.slice(0, 3), spart, navn, antall: medPris.length, utenPris: varer.length - medPris.length };
 }
 
 // ---------- Middager ----------

@@ -8,6 +8,7 @@
 //   priser         – dagens priser per kjede for en liste varenavn (fra Kassalapp), med 12 timers mellomlager.
 //                    POST {"action":"priser","navn":["Melk","Kjøttdeig"],"force":false}. Kun familiemedlemmer.
 //   sok            – søk etter en vare på tvers av kjedene (fra Kassalapp). Kun familiemedlemmer.
+//   butikker-naer  – hvilke kjeder har butikk innenfor {lat, lng, km} (fra Kassalapp). Lagres i innstillinger.
 //   push-abonner   – lagrer push-abonnementet for denne telefonen (familiemedlem).
 //   push-avslutt   – fjerner et push-abonnement.
 //   push-test      – sender et testvarsel til egne enheter.
@@ -448,6 +449,29 @@ async function priser(navnListe: string[], force: boolean) {
   return json({ resultater, feil, gjenstaar });
 }
 
+// Avstand i km mellom to punkter
+function avstand(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const r = (x: number) => (x * Math.PI) / 180;
+  const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lng2 - lng1) / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
+// Kjeder med fysisk butikk innenfor radius. Henter nærmeste butikker per kjede vi bryr oss om.
+const DAGLIGVAREKJEDER = ["KIWI", "REMA_1000", "MENY_NO", "SPAR_NO", "JOKER_NO", "COOP_EXTRA", "COOP_MEGA", "COOP_PRIX",
+  "COOP_OBS", "COOP_MARKED", "BUNNPRIS", "NAERBUTIKKEN", "MATKROKEN", "EUROPRIS_NO"];
+async function butikkerNaer(lat: number, lng: number, km: number) {
+  const resultat: Record<string, any> = {};
+  for (const gruppe of DAGLIGVAREKJEDER) {
+    const svar = await kassal("/physical-stores", { lat, lng, km: Math.max(1, km), group: gruppe, size: 100 });
+    const butikker = (svar?.data || [])
+      .map((b: any) => ({ navn: b.name, adresse: b.address, km: b.position?.lat ? avstand(lat, lng, Number(b.position.lat), Number(b.position.lng)) : null }))
+      .filter((b: any) => b.km == null || b.km <= km)
+      .sort((a: any, b: any) => (a.km ?? 999) - (b.km ?? 999));
+    if (butikker.length) resultat[gruppe] = { antall: butikker.length, naermest: butikker[0] };
+  }
+  return resultat;
+}
+
 async function sok(q: string) {
   const s = normaliser(q || "");
   if (s.length < 3) return json({ error: "Skriv minst tre bokstaver" }, 400);
@@ -771,6 +795,18 @@ Deno.serve(async (req) => {
     if (!meg) return json({ error: "Logg inn på nytt" }, 401);
 
     if (action === "priser") return await priser(Array.isArray(body.navn) ? body.navn : [], Boolean(body.force));
+    if (action === "butikker-naer") {
+      const lat = Number(body.lat), lng = Number(body.lng), km = Math.min(50, Math.max(0, Number(body.km) || 0));
+      if (!isFinite(lat) || !isFinite(lng)) return json({ error: "Mangler posisjon" }, 400);
+      try {
+        const naer = await butikkerNaer(lat, lng, km);
+        await admin.from("innstillinger").update({ lat, lng, radius_km: km, butikker_naer: naer, naer_hentet: new Date().toISOString() }).eq("id", 1);
+        return json({ ok: true, naer });
+      } catch (e) {
+        if (e instanceof ForMangeKall) return json({ error: "Mange oppslag akkurat nå – prøv igjen om et minutt" }, 429);
+        throw e;
+      }
+    }
     if (action === "sok") return await sok(p("q"));
 
     if (action === "push-abonner") {

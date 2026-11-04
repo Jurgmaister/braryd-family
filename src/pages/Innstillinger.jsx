@@ -118,10 +118,39 @@ function Siri() {
 function TilbudInnstillinger() {
   const inn = useInnstillinger();
   const [valgt, setValgt] = useState(null);
-  useEffect(() => { if (inn) setValgt(inn.butikker || []); }, [inn]);
+  const [km, setKm] = useState(15);
+  const [pos, setPos] = useState(null);
+  const [naer, setNaer] = useState(null);
+  const [sjekker, setSjekker] = useState(false);
+  useEffect(() => {
+    if (!inn) return;
+    setValgt(inn.butikker || []);
+    if (inn.radius_km != null) setKm(inn.radius_km);
+    if (inn.lat != null) setPos({ lat: inn.lat, lng: inn.lng });
+    setNaer(inn.butikker_naer || null);
+  }, [inn]);
   if (!valgt) return null;
 
   const veksle = (k) => setValgt(valgt.includes(k) ? valgt.filter((x) => x !== k) : [...valgt, k]);
+
+  async function sjekkNaer(nyPos = pos, nyKm = km) {
+    if (!nyPos) { toast('Trykk «Bruk min posisjon» først'); return; }
+    setSjekker(true);
+    try {
+      const svar = await callFunction('butikker-naer', { lat: nyPos.lat, lng: nyPos.lng, km: nyKm });
+      setNaer(svar.naer);
+      await lastInnstillingerPaaNytt();
+    } catch (e) { toast(e.message); } finally { setSjekker(false); }
+  }
+
+  function minPosisjon() {
+    if (!navigator.geolocation) { toast('Telefonen deler ikke posisjon'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => { const ny = { lat: Number(p.coords.latitude.toFixed(4)), lng: Number(p.coords.longitude.toFixed(4)) }; setPos(ny); sjekkNaer(ny, km); },
+      () => toast('Fikk ikke tilgang til posisjonen'),
+      { enableHighAccuracy: false, timeout: 10000 },
+    );
+  }
 
   async function lagre() {
     const { error } = await supabase.from('innstillinger').update({ butikker: valgt }).eq('id', 1);
@@ -130,16 +159,46 @@ function TilbudInnstillinger() {
     toast('Lagret');
   }
 
+  const info = (k) => naer?.[k];
   return (
     <section className="card stack">
-      <h2 className="h2"><Icon name="tag" size={20} /> Priser</h2>
-      <p className="muted">Prisene kommer fra Kassalapp, som henter dagens priser fra nettbutikkene til kjedene. Velg hvilke kjeder dere handler i.</p>
-      <div className="chips">
-        {BUTIKKER.map((b) => (
-          <button key={b.kode} type="button" className={valgt.includes(b.kode) ? 'chip chip-on' : 'chip'} onClick={() => veksle(b.kode)}>{b.navn}</button>
-        ))}
+      <h2 className="h2"><Icon name="tag" size={20} /> Priser og butikker</h2>
+      <p className="muted">Prisene kommer fra Kassalapp (kjedenes nettpriser). Velg kjedene dere handler i, og hvor langt unna butikken kan ligge.</p>
+
+      <div className="stack-liten">
+        <div className="inputrad">
+          <span className="vokse muted liten"><Icon name="pin" size={14} /> {pos ? `${pos.lat.toFixed(3)}, ${pos.lng.toFixed(3)}` : 'Ingen posisjon'}</span>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={minPosisjon}>Bruk min posisjon</button>
+        </div>
+        <label className="field">Avstand til butikk: <b>{km} km</b>
+          <input type="range" className="glider" min="0" max="50" step="1" value={km}
+            onChange={(e) => setKm(Number(e.target.value))}
+            onPointerUp={() => sjekkNaer(pos, km)} onKeyUp={() => sjekkNaer(pos, km)} onTouchEnd={() => sjekkNaer(pos, km)} />
+        </label>
+        <div className="glider-skala"><span>0</span><span>25</span><span>50 km</span></div>
+        {sjekker && <p className="fremdrift"><span className="spinner-liten" /> Finner butikker innen {km} km …</p>}
+      </div>
+
+      <div>
+        <p className="feltnavn">Kjeder {naer ? `(innen ${km} km)` : ''}</p>
+        <div className="chips">
+          {BUTIKKER.filter((b) => b.kode !== 'COOP_NO' && b.kode !== 'ODA_NO').map((b) => {
+            const i = info(b.kode);
+            const utenfor = naer && !i;
+            return (
+              <button key={b.kode} type="button" className={`${valgt.includes(b.kode) ? 'chip chip-on' : 'chip'} ${utenfor ? 'chip-utenfor' : ''}`} onClick={() => veksle(b.kode)}
+                title={i ? `${i.antall} butikker, nærmest ${i.naermest.navn}` : utenfor ? `Ingen innen ${km} km` : ''}>
+                {b.navn}{i?.naermest?.km != null ? ` · ${i.naermest.km.toFixed(1)} km` : ''}
+              </button>
+            );
+          })}
+        </div>
+        {naer && valgt.some((k) => !naer[k]) && (
+          <p className="muted liten" style={{ marginTop: 6 }}>Valgte kjeder uten butikk innen {km} km vises ikke: {valgt.filter((k) => !naer[k]).map((k) => BUTIKKER.find((b) => b.kode === k)?.navn || k).join(', ')}.</p>
+        )}
       </div>
       <button type="button" className="btn btn-primary" onClick={lagre}>Lagre kjeder</button>
+      <p className="muted liten">Obs, Extra og Mega bruker Coops nettpris når Kassalapp ikke har egen pris for kjeden.</p>
     </section>
   );
 }

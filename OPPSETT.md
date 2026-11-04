@@ -200,3 +200,14 @@ Oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/f
 - **Anbefalt butikk** øverst i handlelisten: billigste butikk for hele listen, eller to butikker hvis det sparer minst 15 kr / 5 %. Trykk på kortet for å se hvilke varer som kjøpes hvor.
 - **Samme vare i alle kjeder:** finnes den mest relevante varen (samme strekkode/EAN) i minst tre kjeder, sammenlignes akkurat den, så prisnivået blir rettferdig (f.eks. Gilde Kjøttdeig 400 g i alle). Kjeder som ikke har varen vises som «har ikke akkurat denne varen» med sitt nærmeste alternativ.
 - **Grense hos Kassalapp:** gratisnivået tillater 60 oppslag i minuttet. Funksjonen holder seg på 50 og henter store lister i omganger (appen viser «Henter priser 12 av 35 …» og fortsetter av seg selv). Utvidede søk og ekstra oppslag brukes bare når det trengs.
+
+---
+
+## Butikker i nærheten og to-butikk-forslag
+
+Kjør `supabase/priser2.sql` i **SQL Editor → New query → Run**, og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**). SQL-filen velger KIWI, REMA 1000, Obs og MENY som kjeder.
+
+- **Innstillinger → Priser og butikker:** «Bruk min posisjon» og en glider for avstand (0–50 km). Appen slår opp butikkene i nærheten hos Kassalapp og viser avstand til nærmeste butikk per kjede. Valgte kjeder uten butikk innenfor avstanden tas ikke med.
+- **Alle valgte kjeder vises** på hver vare (ikke bare de tre billigste). «≈» betyr at kjeden ikke har akkurat samme vare, og prisen er for nærmeste alternativ.
+- **Obs/Extra/Mega:** har ikke Kassalapp egen pris for kjeden, brukes Coops nettpris.
+- **Priser-fanen:** «Hele listen i én butikk» for alle valgte kjeder, og «Billigst i to butikker» med de tre beste kombinasjonene og hva som kjøpes hvor. Varer en kjede mangler regnes med vanlig pris (median) i de andre, så summene kan sammenlignes.
