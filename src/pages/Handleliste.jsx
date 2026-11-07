@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase.js';
 import {
   useKategorier, useMedlemmer, navnFor, usePriser, treffI, useInnstillinger, leggTilVarer,
-  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett, visPris, anbefaling, aktiveButikker,
+  useLagredeLister, lastListerPaaNytt, aktivListeId, settAktivListe, useRett, visPris, anbefaling, aktiveButikker, prisNokkel,
 } from '../data.js';
+import SkannVare from '../components/SkannVare.jsx';
 import KunInnsyn from '../components/KunInnsyn.jsx';
 import { butikk } from '../config.js';
 import { tolkVarer, normaliser, kr, initialer } from '../util.js';
@@ -38,14 +39,15 @@ export default function Handleliste({ liste }) {
       .sort((a, b) => a.rekkefolge - b.rekkefolge);
   }, [aktive, kategorier]);
 
-  const { pris, fremdrift } = usePriser(aktive.map((v) => v.navn));
+  const { pris, fremdrift } = usePriser(aktive.map(prisNokkel));
   const inn = useInnstillinger();
   const kan = useRett('handle');
   const butikker = aktiveButikker(inn);
   const lagrede = useLagredeLister();
   const aktivId = aktivListeId(inn);
   const aktivListe = (lagrede || []).find((l) => l.id === aktivId) || null;
-  const prisFor = (v) => treffI(pris(v.navn), butikker);
+  const prisFor = (v) => treffI(pris(prisNokkel(v)), butikker);
+  const [skannApen, setSkannApen] = useState(false);
 
   async function leggTil(e) {
     e.preventDefault();
@@ -79,6 +81,7 @@ export default function Handleliste({ liste }) {
   return (
     <main className="page">
       <Topbar tittel="Handleliste" under={varer ? (aktive.length ? `${aktive.length} ${aktive.length === 1 ? 'vare' : 'varer'}` : 'Alt er handlet') : ''}>
+        {kan && <button type="button" className="ikonknapp" onClick={() => setSkannApen(true)} aria-label="Skann vare"><Icon name="scan" /></button>}
         {kan && <button type="button" className="ikonknapp" onClick={() => setListerApen(true)} aria-label="Lagrede lister"><Icon name="list" /></button>}
         {kan && <button type="button" className="ikonknapp" onClick={() => setLagreApen(true)} aria-label="Lagre listen" disabled={!(varer || []).length}><Icon name="save" /></button>}
       </Topbar>
@@ -142,8 +145,9 @@ export default function Handleliste({ liste }) {
         </section>
       )}
 
-      <VareSkjema kan={kan} vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []} prisData={redigerer ? pris(redigerer.navn) : null}
+      <VareSkjema kan={kan} vare={redigerer} kategorier={kategorier} tilbud={redigerer ? prisFor(redigerer) : []} prisData={redigerer ? pris(prisNokkel(redigerer)) : null}
         onClose={() => setRedigerer(null)} setVarer={setVarer} medlemmer={medlemmer} />
+      {kan && <SkannVare open={skannApen} onClose={() => setSkannApen(false)} aktive={aktive} setVarer={setVarer} />}
       <LagreListe open={lagreApen} onClose={() => setLagreApen(false)} varer={varer || []} lagrede={lagrede || []} aktivId={aktivListe?.id || null} />
       <LagredeLister open={listerApen} onClose={() => setListerApen(false)} aktive={aktive} setVarer={setVarer} lagrede={lagrede} />
     </main>

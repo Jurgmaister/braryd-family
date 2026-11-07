@@ -211,3 +211,13 @@ Kjør `supabase/priser2.sql` i **SQL Editor → New query → Run**, og oppdater
 - **Alle valgte kjeder vises** på hver vare (ikke bare de tre billigste). «≈» betyr at kjeden ikke har akkurat samme vare, og prisen er for nærmeste alternativ.
 - **Obs/Extra/Mega:** har ikke Kassalapp egen pris for kjeden, brukes Coops nettpris.
 - **Priser-fanen:** «Hele listen i én butikk» for alle valgte kjeder, og «Billigst i to butikker» med de tre beste kombinasjonene og hva som kjøpes hvor. Varer en kjede mangler regnes med vanlig pris (median) i de andre, så summene kan sammenlignes.
+
+---
+
+## Skann varer til handlelisten
+
+Kjør `supabase/strekkoder.sql` i **SQL Editor → New query → Run**, og oppdater funksjonen (**Edge Functions → braryd → Code**, lim inn `supabase/functions/braryd/index.ts`, **Deploy**).
+
+Strekkode-knappen øverst i handlelisten åpner kameraet (samme skanner som i Alvøen-appen). Varen slås opp i Kassalapp (norske varenavn), ellers i Open Food Facts. Du kan endre navnet før den legges på listen, og appen husker navnet til neste gang samme strekkode skannes. Skannede varer får pris for akkurat den varen i hver kjede. Etter hver vare er skanneren klar for neste; trykk «Ferdig» når du er ferdig.
+
+På iPhone må BraRyd få tilgang til kameraet første gang (spørsmål fra Safari/appen).

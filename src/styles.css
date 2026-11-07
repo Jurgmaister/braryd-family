@@ -421,3 +421,13 @@ fieldset.innsyn .chip:not(.chip-on), fieldset.innsyn .ukedag:not(.ukedag-on) { o
 .glider-skala { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -6px; }
 .chip-utenfor { opacity: .45; text-decoration: line-through; }
 .chip-utenfor.chip-on { opacity: .7; }
+
+/* ---------- Skann vare ---------- */
+.skann { display: flex; flex-direction: column; gap: 8px; }
+.skann-bilde { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 14px; overflow: hidden; }
+.skann-bilde video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.skann-ramme { position: absolute; left: 10%; right: 10%; top: 32%; bottom: 32%; border: 3px solid var(--butter); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .35); }
+.skann-treff { display: flex; align-items: center; gap: 12px; background: var(--pine-soft); border-radius: 12px; padding: 10px 12px; }
+.skann-treff img { width: 52px; height: 52px; object-fit: contain; background: #fff; border-radius: 8px; }
+.skann-treff .vokse { display: flex; flex-direction: column; gap: 2px; }
+.skann-ikon { font-size: 28px; }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer, useRett, aktiveButikker, anbefaling } from '../data.js';
+import { usePriser, sokPris, treffI, useInnstillinger, leggTilVarer, useRett, aktiveButikker, anbefaling, prisNokkel } from '../data.js';
 import { butikk } from '../config.js';
 import { kr, tidSiden } from '../util.js';
 import Topbar from '../components/Topbar.jsx';
@@ -12,14 +12,14 @@ const enhetTekst = (t) => (t.enhetspris && t.enhet ? `${kr(t.enhetspris)}/${t.en
 
 export default function Priser({ liste }) {
   const aktive = (liste.varer || []).filter((v) => !v.kjopt);
-  const navn = aktive.map((v) => v.navn);
+  const navn = aktive.map(prisNokkel);
   const { pris, laster, feil, oppdater, fremdrift } = usePriser(navn);
   const inn = useInnstillinger();
   const butikker = aktiveButikker(inn);
   const [modus, setModus] = useState('liste');
   const [apen, setApen] = useState(null);
 
-  const perVare = aktive.map((v) => ({ vare: v, data: pris(v.navn), treff: treffI(pris(v.navn), butikker) }));
+  const perVare = aktive.map((v) => ({ vare: v, data: pris(prisNokkel(v)), treff: treffI(pris(prisNokkel(v)), butikker) }));
   const sistHentet = perVare.map((x) => x.data?.hentet).filter(Boolean).sort()[0];
 
   const forslag = anbefaling(perVare);

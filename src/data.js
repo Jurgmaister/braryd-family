@@ -130,13 +130,20 @@ export function useHandleliste() {
 
 export async function leggTilVarer(varer, kilde = 'app') {
   const rader = varer.filter((v) => v.navn?.trim()).map((v) => ({
-    navn: v.navn.trim(), antall: v.antall || '', kategori: v.kategori || null, kilde,
+    navn: v.navn.trim(), antall: v.antall || '', kategori: v.kategori || null, kilde, ...(v.ean ? { ean: v.ean } : {}),
   }));
   if (!rader.length) return [];
-  const { data, error } = await supabase.from('handleliste').insert(rader).select();
+  let { data, error } = await supabase.from('handleliste').insert(rader).select();
+  // Før strekkoder.sql er kjørt finnes ikke ean-kolonnen eller «skann» som kilde
+  if (error && (error.code === 'PGRST204' || error.code === '23514')) {
+    ({ data, error } = await supabase.from('handleliste').insert(rader.map(({ ean, ...r }) => ({ ...r, kilde: r.kilde === 'skann' ? 'app' : r.kilde }))).select());
+  }
   if (error) throw error;
   return data;
 }
+
+// Nøkkel for prisen til en vare: skannede varer har pris for akkurat sin strekkode
+export const prisNokkel = (v) => (v.ean ? `ean:${v.ean}` : v.navn);
 
 // ---------- Innstillinger ----------
 const innstillingStore = lagStore(async () => {

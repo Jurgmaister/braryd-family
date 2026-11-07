@@ -8,6 +8,7 @@
 //   priser         – dagens priser per kjede for en liste varenavn (fra Kassalapp), med 12 timers mellomlager.
 //                    POST {"action":"priser","navn":["Melk","Kjøttdeig"],"force":false}. Kun familiemedlemmer.
 //   sok            – søk etter en vare på tvers av kjedene (fra Kassalapp). Kun familiemedlemmer.
+//   ean-oppslag    – slår opp en skannet strekkode {ean} i Kassalapp: navn, bilde og pris i hver kjede.
 //   butikker-naer  – hvilke kjeder har butikk innenfor {lat, lng, km} (fra Kassalapp). Lagres i innstillinger.
 //   push-abonner   – lagrer push-abonnementet for denne telefonen (familiemedlem).
 //   push-avslutt   – fjerner et push-abonnement.
@@ -363,6 +364,10 @@ function velgReferanse(alle: any[]) {
 // Kassalapp: samme EAN i alle kjeder
 async function prisPerKjede(ean: string, sok: string) {
   const svar = await kassal(`/products/ean/${encodeURIComponent(ean)}`, {});
+  return prisPerKjedeFra(svar, ean, sok);
+}
+
+function prisPerKjedeFra(svar: any, ean: string, sok: string) {
   const vurder = lagVurdering([sok, ...(UTVID[normaliser(sok)] || [])]);
   const ut: any[] = [];
   for (const p of svar?.data?.products || []) {
@@ -379,7 +384,18 @@ async function prisPerKjede(ean: string, sok: string) {
   return [...perKjede.values()].sort((a, b) => a.pris - b.pris);
 }
 
+// Skannede varer: pris for akkurat denne strekkoden i hver kjede
+async function hentPrisEan(sok: string, ean: string, svar?: any) {
+  const data = svar === undefined ? await kassal(`/products/ean/${encodeURIComponent(ean)}`, {}) : svar;
+  const like = data ? prisPerKjedeFra(data, ean, "") : [];
+  return {
+    sok, treff: like, andre: [], alle: like, basis: "pris",
+    referanse: like.length ? { ean, navn: like[0].navn } : null, v: PRIS_VERSJON, hentet: new Date().toISOString(),
+  };
+}
+
 async function hentPris(sok: string) {
+  if (sok.startsWith("ean:")) return hentPrisEan(sok, sok.slice(4));
   const produkter = new Map<string, any>();
   const leggTilSok = async (q: string) => {
     const svar = await kassal("/products", { search: q, size: 100 });
@@ -795,6 +811,29 @@ Deno.serve(async (req) => {
     if (!meg) return json({ error: "Logg inn på nytt" }, 401);
 
     if (action === "priser") return await priser(Array.isArray(body.navn) ? body.navn : [], Boolean(body.force));
+    if (action === "ean-oppslag") {
+      const ean = String(body.ean || "").replace(/\D/g, "");
+      if (ean.length < 8) return json({ error: "Ugyldig strekkode" }, 400);
+      try {
+        const svar = await kassal(`/products/ean/${encodeURIComponent(ean)}`, {});
+        const produkter = svar?.data?.products || [];
+        const p = svar?.data?.product || produkter.find((x: any) => x?.name) || null;
+        if (!p) return json({ funnet: false });
+        // Lagre prisene med en gang, så handlelisten ikke trenger et nytt oppslag
+        const pris = await hentPrisEan(`ean:${ean}`, ean, svar);
+        await admin.from("pris_cache").upsert({ sok: `ean:${ean}`, data: pris, hentet: pris.hentet });
+        const navn = String(p.name || "").trim();
+        const merke = String(p.brand || p.vendor || "").trim();
+        return json({
+          funnet: true, navn, merke, bilde: p.image || "",
+          fulltNavn: merke && !navn.toLowerCase().includes(merke.toLowerCase()) ? `${merke} ${navn}` : navn,
+          kategori: kategorier(p)[0] || "", priser: pris.treff.length,
+        });
+      } catch (e) {
+        if (e instanceof ForMangeKall) return json({ error: "Mange oppslag akkurat nå – prøv igjen om litt" }, 429);
+        throw e;
+      }
+    }
     if (action === "butikker-naer") {
       const lat = Number(body.lat), lng = Number(body.lng), km = Math.min(50, Math.max(0, Number(body.km) || 0));
       if (!isFinite(lat) || !isFinite(lng)) return json({ error: "Mangler posisjon" }, 400);
